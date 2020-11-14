@@ -1,15 +1,27 @@
-package serverInstance
+package cacheDb
 
 import (
-	"bytes"
   "remoteCacheToGo/cmd/cache"
 )
 
-type cacheDb struct {
-	dbs map[string][cache]
+type CacheDb struct {
+	Db map[string]cache.Cache
 }
 
-func New() {
-  cacheDb := cacheDb{make(map[string][cache])}
+func New() CacheDb {
+  cacheDb := CacheDb{make(map[string]cache.Cache)}
   return cacheDb
+}
+
+func (cacheDb CacheDb) NewCache(cacheName string) {
+  cacheDb.Db[cacheName] = cache.New()
+}
+
+func (cacheDb CacheDb) RemoveCache(cacheName string) {
+  delete(cacheDb.Db, cacheName)
+}
+
+
+func (cacheDb CacheDb) AddEntryToCache(cacheName string, key string, val []byte) {
+	cacheDb.Db[cacheName].AddKeyVal(key, val)
 }

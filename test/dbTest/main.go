@@ -7,5 +7,9 @@ import (
 
 func main() {
 	fmt.Println("DB test")
-  dbs := cacheDb.New()
+
+  cacheDb := cacheDb.New()
+  cacheDb.NewCache("test")
+
+  cacheDb.AddEntryToCache("test", "testKey", []byte("dsadasd"))
 }
