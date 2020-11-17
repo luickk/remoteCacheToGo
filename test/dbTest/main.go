@@ -11,5 +11,8 @@ func main() {
   cacheDb := cacheDb.New()
   cacheDb.NewCache("test")
 
-  cacheDb.AddEntryToCache("test", "testKey", []byte("dsadasd"))
+  cacheDb.AddEntryToCache("test", "testKey", []byte("peter ist peter!"))
+
+
+  fmt.Print(string(cacheDb.GetEntryFromCache("test", "testKey")))
 }
