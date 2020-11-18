@@ -32,9 +32,9 @@ func (cache Cache) CacheHandler(req chan PushPullRequest) {
 		for _, request := range requestBuffer {
 			request.Fullfilled = true
 			// pull operation
-			if len(request.Data) <= 0 {
+			if len(request.Data) <= 0  && request.Fullfilled == false {
 				request.ReturnPayload <- cache.cacheMap[request.Key]
-			} else if len(request.Data) > 0 { // push operation
+			} else if len(request.Data) > 0  && request.Fullfilled == false  { // push operation
 				cache.cacheMap[request.Key] = request.Data
 			}
 		}
