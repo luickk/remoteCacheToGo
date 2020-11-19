@@ -84,6 +84,7 @@ func (cacheDb CacheDb) GetEntryFromCache(cacheName string, key string) []byte {
 	request.Operation = "get"
 	request.CacheName = cacheName
 	request.Key = key
+	request.ReturnPayload = make(chan []byte)
 
 	cacheDb.CacheOpCh <- *request
 
