@@ -20,12 +20,12 @@ type CachePushPullRequest struct {
 
 type CacheDb struct {
 	Db map[string]cache.Cache
-	DbOpCh chan DbOp
-	CacheOpCh chan CachePushPullRequest
+	DbOpCh chan *DbOp
+	CacheOpCh chan *CachePushPullRequest
 	CacheDbHandlerStarted bool
 }
 
-func (cacheDb CacheDb) CacheDbHandler(cacheDbOp chan DbOp,  cacheOp chan CachePushPullRequest) {
+func (cacheDb CacheDb) CacheDbHandler(cacheDbOp chan *DbOp,  cacheOp chan *CachePushPullRequest) {
 	cacheDb.CacheDbHandlerStarted = true
 
 	for {
@@ -47,7 +47,7 @@ func (cacheDb CacheDb) CacheDbHandler(cacheDbOp chan DbOp,  cacheOp chan CachePu
 }
 
 func New() CacheDb {
-  cacheDb := CacheDb{make(map[string]cache.Cache), make(chan DbOp), make(chan CachePushPullRequest), false}
+  cacheDb := CacheDb{make(map[string]cache.Cache), make(chan *DbOp), make(chan *CachePushPullRequest), false}
 	cacheDb.CacheDbHandlerStarted = false
 	go cacheDb.CacheDbHandler(cacheDb.DbOpCh, cacheDb.CacheOpCh)
   return cacheDb
@@ -58,7 +58,9 @@ func (cacheDb CacheDb) NewCache(cacheName string) {
 	request.Operation = "create"
 	request.Val = cacheName
 
-  cacheDb.DbOpCh <- *request
+  cacheDb.DbOpCh <- request
+
+	request = nil
 }
 
 func (cacheDb CacheDb) RemoveCache(cacheName string) {
@@ -66,7 +68,9 @@ func (cacheDb CacheDb) RemoveCache(cacheName string) {
 	request.Operation = "remove"
 	request.Val = cacheName
 
-  cacheDb.DbOpCh <- *request
+  cacheDb.DbOpCh <- request
+
+	request = nil
 }
 
 func (cacheDb CacheDb) AddEntryToCache(cacheName string, key string, val []byte) {
@@ -76,7 +80,9 @@ func (cacheDb CacheDb) AddEntryToCache(cacheName string, key string, val []byte)
 	request.Key = key
 	request.Data = val
 
-  cacheDb.CacheOpCh <- *request
+  cacheDb.CacheOpCh <- request
+
+	request = nil
 }
 
 func (cacheDb CacheDb) GetEntryFromCache(cacheName string, key string) []byte {
@@ -86,7 +92,7 @@ func (cacheDb CacheDb) GetEntryFromCache(cacheName string, key string) []byte {
 	request.Key = key
 	request.ReturnPayload = make(chan []byte)
 
-	cacheDb.CacheOpCh <- *request
+	cacheDb.CacheOpCh <- request
 
 	reply := false
 	payload := []byte{}

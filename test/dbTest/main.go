@@ -3,6 +3,8 @@ package main
 import (
   "fmt"
   "remoteCacheToGo/cmd/cacheDb"
+  "strconv"
+  "time"
 )
 
 func main() {
@@ -23,16 +25,18 @@ func main() {
 func concurrentTestInstanceA(cDb cacheDb.CacheDb) {
   i := 0
   for {
-    cDb.AddEntryToCache("test2", "test"+string(i), []byte("test2"))
-    fmt.Print(cDb.GetEntryFromCache("test1", "test"+string(i)))
+    i++
+    cDb.AddEntryToCache("test2", "test"+strconv.Itoa(i), []byte("test"+strconv.Itoa(i)))
+    cDb.AddEntryToCache("test1", "test"+strconv.Itoa(i), []byte("test"+strconv.Itoa(i)))
   }
 }
 
 func concurrentTestInstanceB(cDb cacheDb.CacheDb) {
   i := 0
   for {
-    cDb.AddEntryToCache("test1", "test"+string(i), []byte("test1"))
-    fmt.Print(cDb.GetEntryFromCache("test2", "test"+string(i)))
-
-  }
+    i++
+    fmt.Println("test"+strconv.Itoa(i) + ": " + string(cDb.GetEntryFromCache("test2", "test"+strconv.Itoa(i))))
+    fmt.Println("test"+strconv.Itoa(i) + ": " + string(cDb.GetEntryFromCache("test1", "test"+strconv.Itoa(i))))
+    time.Sleep(100 * time.Millisecond)
+    }
 }

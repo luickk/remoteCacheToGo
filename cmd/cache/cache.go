@@ -13,11 +13,11 @@ type PushPullRequest struct {
 
 type Cache struct {
 	cacheMap map[string][]byte
-	PushPullRequestCh chan PushPullRequest
+	PushPullRequestCh chan *PushPullRequest
 	CacheHandlerStarted bool
 }
 
-func (cache Cache) CacheHandler(req chan PushPullRequest) {
+func (cache Cache) CacheHandler(req chan *PushPullRequest) {
 	cache.CacheHandlerStarted = true
 	for {
 		select {
@@ -33,7 +33,7 @@ func (cache Cache) CacheHandler(req chan PushPullRequest) {
 }
 
 func New() Cache {
-  cache := Cache{make(map[string][]byte), make(chan PushPullRequest), false}
+  cache := Cache{make(map[string][]byte), make(chan *PushPullRequest), false}
 	cache.CacheHandlerStarted = false
 	go cache.CacheHandler(cache.PushPullRequestCh)
   return cache
@@ -44,14 +44,16 @@ func (cache Cache) AddKeyVal(key string, val []byte) {
 	request.Key = key
 	request.Data = val
 
-  cache.PushPullRequestCh <- *request
+  cache.PushPullRequestCh <- request
+
+	request = nil
 }
 
 func (cache Cache) GetKeyVal(key string) []byte {
 	request := new(PushPullRequest)
 	request.Key = key
 	request.ReturnPayload = make(chan []byte)
-  cache.PushPullRequestCh <- *request
+  cache.PushPullRequestCh <- request
 
 	reply := false
 	payload := []byte{}
@@ -65,5 +67,7 @@ func (cache Cache) GetKeyVal(key string) []byte {
 			break
 		}
 	}
+
+	request = nil
 	return payload
 }
