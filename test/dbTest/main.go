@@ -37,6 +37,6 @@ func concurrentTestInstanceB(cDb cacheDb.CacheDb) {
     i++
     fmt.Println("test"+strconv.Itoa(i) + ": " + string(cDb.GetEntryFromCache("test2", "test"+strconv.Itoa(i))))
     fmt.Println("test"+strconv.Itoa(i) + ": " + string(cDb.GetEntryFromCache("test1", "test"+strconv.Itoa(i))))
-    time.Sleep(100 * time.Millisecond)
+    time.Sleep(10 * time.Millisecond)
     }
 }
