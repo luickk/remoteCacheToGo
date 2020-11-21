@@ -2,6 +2,12 @@ package cache
 
 import (
 	"net"
+	"fmt"
+	"math/rand"
+	"bufio"
+	"time"
+	"bytes"
+	"strconv"
 )
 
 type PushPullRequest struct {
@@ -16,6 +22,9 @@ type Cache struct {
 	PushPullRequestCh chan *PushPullRequest
 	CacheHandlerStarted bool
 }
+
+// tcpConnBuffer defines the buffer size of the TCP conn reader
+var tcpConnBuffer = 1024
 
 func (cache Cache) CacheHandler(req chan *PushPullRequest) {
 	cache.CacheHandlerStarted = true
@@ -33,7 +42,7 @@ func (cache Cache) CacheHandler(req chan *PushPullRequest) {
 }
 
 func (cache Cache) RemoteConnHandler(port int) {
-	l, err := net.Listen("tcp4", port)
+	l, err := net.Listen("tcp4", strconv.Itoa(port))
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -48,23 +57,39 @@ func (cache Cache) RemoteConnHandler(port int) {
 			return
 		}
 
-		go func handleConnection(c net.Conn) {
+		go func(c net.Conn, cache Cache) {
 			fmt.Printf("New client connected to %s \n", c.RemoteAddr().String())
+			data := make([]byte, tcpConnBuffer)
 			for {
-				netData, err := bufio.NewReader(c).ReadString('\r')
+				n, err := bufio.NewReader(c).Read(data)
 				if err != nil {
 					fmt.Println(err)
 					return
 				}
-				if netData[0] == ">" { //pull
+				data = data[:n]
 
-				} else if netData[0] == "<" { // push
-
+				netDataSeperated := bytes.Split(data, []byte("\r"))
+				if err != nil {
+					fmt.Println(err)
+					return
 				}
-			}
-			result := strconv.Itoa(random()) + "\n"
-			c.Write([]byte(string(result)))
-		}(c)
+
+				for _, data := range netDataSeperated {
+					if len(data) >= 1 {
+							dataDelimSplitByte := bytes.SplitN(data, []byte("-"), 3)
+							key := string(dataDelimSplitByte[0])
+							operation := string(dataDelimSplitByte[1])
+							payload := dataDelimSplitByte[2]
+
+							if operation == ">" { //pull
+								c.Write(cache.GetKeyVal(key))
+							} else if operation == "<" { // push
+								cache.AddKeyVal(key, payload)
+							}
+						}
+					}
+				}
+		}(c, cache)
 	}
 }
 
