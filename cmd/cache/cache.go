@@ -26,11 +26,11 @@ type Cache struct {
 // tcpConnBuffer defines the buffer size of the TCP conn reader
 var tcpConnBuffer = 1024
 
-func (cache Cache) CacheHandler(req chan *PushPullRequest) {
+func (cache Cache) CacheHandler() {
 	cache.CacheHandlerStarted = true
 	for {
 		select {
-		case ppCacheOp := <-req:
+		case ppCacheOp := <-cache.PushPullRequestCh:
 			// pull operation
 			if len(ppCacheOp.Data) <= 0 {
 				ppCacheOp.ReturnPayload <- cache.cacheMap[ppCacheOp.Key]
@@ -42,7 +42,7 @@ func (cache Cache) CacheHandler(req chan *PushPullRequest) {
 }
 
 func (cache Cache) RemoteConnHandler(port int) {
-	l, err := net.Listen("tcp4", strconv.Itoa(port))
+	l, err := net.Listen("tcp4", "localhost:"+strconv.Itoa(port))
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -80,7 +80,6 @@ func (cache Cache) RemoteConnHandler(port int) {
 							key := string(dataDelimSplitByte[0])
 							operation := string(dataDelimSplitByte[1])
 							payload := dataDelimSplitByte[2]
-
 							if operation == ">" { //pull
 								c.Write(cache.GetKeyVal(key))
 							} else if operation == "<" { // push
@@ -96,7 +95,7 @@ func (cache Cache) RemoteConnHandler(port int) {
 func New() Cache {
   cache := Cache{make(map[string][]byte), make(chan *PushPullRequest), false}
 	cache.CacheHandlerStarted = false
-	go cache.CacheHandler(cache.PushPullRequestCh)
+	go cache.CacheHandler()
   return cache
 }
 

@@ -14,6 +14,8 @@ func main() {
   cDb.NewCache("test1")
   cDb.NewCache("test2")
 
+  go cDb.Db["test1"].RemoteConnHandler(4444)
+
   cDb.AddEntryToCache("test1", "testKey", []byte("test1"))
 
   fmt.Print(string(cDb.GetEntryFromCache("test1", "testKey")))
