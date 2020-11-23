@@ -3,9 +3,7 @@ package cache
 import (
 	"net"
 	"fmt"
-	"math/rand"
 	"bufio"
-	"time"
 	"bytes"
 	"strconv"
 )
@@ -48,7 +46,6 @@ func (cache Cache) RemoteConnHandler(port int) {
 		return
 	}
 	defer l.Close()
-	rand.Seed(time.Now().Unix())
 
 	for {
 		c, err := l.Accept()
@@ -81,7 +78,7 @@ func (cache Cache) RemoteConnHandler(port int) {
 							operation := string(dataDelimSplitByte[1])
 							payload := dataDelimSplitByte[2]
 							if operation == ">" { //pull
-								c.Write(cache.GetKeyVal(key))
+								c.Write(append(append([]byte(key+"->-"), cache.GetKeyVal(key)...), []byte("\r")...))
 							} else if operation == "<" { // push
 								cache.AddKeyVal(key, payload)
 							}
@@ -100,6 +97,8 @@ func New() Cache {
 }
 
 func (cache Cache) AddKeyVal(key string, val []byte) {
+	fmt.Println("Value inserted to key: " + key)
+	fmt.Println("Value: " + string(val))
 	request := new(PushPullRequest)
 	request.Key = key
 	request.Data = val
@@ -110,6 +109,7 @@ func (cache Cache) AddKeyVal(key string, val []byte) {
 }
 
 func (cache Cache) GetKeyVal(key string) []byte {
+	fmt.Println("Value requested")
 	request := new(PushPullRequest)
 	request.Key = key
 	request.ReturnPayload = make(chan []byte)

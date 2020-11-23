@@ -1,4 +1,4 @@
-package cache
+package cacheClient
 
 import (
 	"net"
@@ -20,18 +20,12 @@ type RemoteCache struct {
 }
 
 func connectToRemoteHandler(address string, port int) (bool, net.Conn) {
-  d := net.Dialer{Timeout: 5}
-  c, err := d.Dial("tcp", address+":"+strconv.Itoa(port))
+  c, err := net.Dial("tcp", address+":"+strconv.Itoa(port))
   if err != nil {
     fmt.Println(err)
     return false, c
   }
-
   return true, c
-}
-
-func (cache RemoteCache) remoteHandler() {
-
 }
 
 func (cache RemoteCache) pushPullRequestHandler() {
@@ -40,9 +34,10 @@ func (cache RemoteCache) pushPullRequestHandler() {
 		select {
 		case ppCacheOp := <-cache.PushPullRequestCh:
 			if len(ppCacheOp.Data) <= 0 { // pull operation
-
+				cache.conn.Write(append([]byte(ppCacheOp.Key + "->-"), []byte("\r")...))
+				ppCacheOp.ReturnPayload <- []byte("lol")
 			} else if len(ppCacheOp.Data) > 0 { // push operation
-
+				cache.conn.Write(append(append([]byte(ppCacheOp.Key + "-<-"), ppCacheOp.Data...), []byte("\r")...))
 			}
 		}
 	}
@@ -51,11 +46,10 @@ func (cache RemoteCache) pushPullRequestHandler() {
 func New(address string, port int) RemoteCache {
 	connected, conn := connectToRemoteHandler(address, port)
   if !connected {
-    fmt.Print("could not connect to given address")
+    fmt.Println("could not connect to given address")
   }
   cache := RemoteCache{conn, make(chan *PushPullRequest), false}
   go cache.pushPullRequestHandler()
-  go cache.remoteHandler()
 	return cache
 }
 

@@ -8,9 +8,9 @@ import (
 func main() {
   fmt.Println("Client test")
 
-  cacheClient.New("localhost", 444)
+  client := cacheClient.New("localhost", 8000)
 
-  // cDb.AddEntryToCache("test1", "testKey", []byte("test1"))
+  client.AddKeyVal("remote1", []byte("test1"))
 
-  // fmt.Print(string(cDb.GetEntryFromCache("test1", "testKey")))
+  fmt.Println(string(client.GetKeyVal("remote1")))
 }
