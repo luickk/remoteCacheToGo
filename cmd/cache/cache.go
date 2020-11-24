@@ -40,7 +40,7 @@ func (cache Cache) CacheHandler() {
 }
 
 func (cache Cache) RemoteConnHandler(port int) {
-	l, err := net.Listen("tcp4", "localhost:"+strconv.Itoa(port))
+	l, err := net.Listen("tcp4", "127.0.0.1:"+strconv.Itoa(port))
 	if err != nil {
 		fmt.Println(err)
 		return

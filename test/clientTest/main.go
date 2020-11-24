@@ -8,7 +8,7 @@ import (
 func main() {
   fmt.Println("Client test")
 
-  client := cacheClient.New("localhost", 8000)
+  client := cacheClient.New("127.0.0.1", 8000)
 
   client.AddKeyVal("remote1", []byte("test1"))
 
