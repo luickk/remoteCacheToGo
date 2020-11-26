@@ -11,15 +11,16 @@ func main() {
 	fmt.Println("DB test")
 
   cDb := cacheDb.New()
-  cDb.NewCache("test1")
-  cDb.NewCache("test2")
+  cDb.NewCache("test")
 
+  cDb.Db["test"].RemoteConnHandler(8000)
 
-  cDb.AddEntryToCache("test1", "testKey", []byte("test1"))
+  // if cDb.AddEntryToCache("test1", "testKey", []byte("test1")) {
+  //   fmt.Println("Written val to testKey")
+  // }
 
-  fmt.Println(string(cDb.GetEntryFromCache("test1", "testKey")))
+  // fmt.Println("Requestd key: "+string(cDb.GetEntryFromCache("test1", "testKey")))
 
-  cDb.Db["test1"].RemoteConnHandler(8000)
   // go concurrentTestInstanceA(cDb)
   // concurrentTestInstanceB(cDb)
 }

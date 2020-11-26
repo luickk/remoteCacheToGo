@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"bytes"
 	"bufio"
+  "remoteCacheToGo/internal/remoteCacheToGo"
 )
 
 type PushPullRequest struct {
@@ -72,8 +73,8 @@ func (cache RemoteCache) pushPullRequestHandler() {
 	for {
 		select {
 		case ppCacheOp := <-cache.PushPullRequestCh:
-			ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
 			if len(ppCacheOp.Data) <= 0 { // pull operation
+				ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
 				cache.conn.Write(append([]byte(ppCacheOp.Key + "->-"), []byte("\r")...))
 			} else if len(ppCacheOp.Data) > 0 { // push operation
 				cache.conn.Write(append(append([]byte(ppCacheOp.Key + "-<-"), ppCacheOp.Data...), []byte("\r")...))
@@ -98,36 +99,42 @@ func New(address string, port int) RemoteCache {
 	return cache
 }
 
-func (cache RemoteCache) AddKeyVal(key string, val []byte) {
-	request := new(PushPullRequest)
-	request.Key = key
-	request.Data = val
+func (cache RemoteCache) AddKeyVal(key string, val []byte) bool {
+  if util.CharacterWhiteList(key) {
+		request := new(PushPullRequest)
+		request.Key = key
+		request.Data = val
 
-  cache.PushPullRequestCh <- request
+	  cache.PushPullRequestCh <- request
 
-	request = nil
+		request = nil
+		return true
+	}
+	return false
 }
 
 func (cache RemoteCache) GetKeyVal(key string) []byte {
-	request := new(PushPullRequest)
-	request.Key = key
-	request.ReturnPayload = make(chan []byte)
-  cache.PushPullRequestCh <- request
+	if util.CharacterWhiteList(key) {
+		request := new(PushPullRequest)
+		request.Key = key
+		request.ReturnPayload = make(chan []byte)
+	  cache.PushPullRequestCh <- request
 
-	reply := false
-	payload := []byte{}
+		reply := false
+		payload := []byte{}
 
-	// waiting for request to be processed and retrieval of payload
-	for !reply {
-		select {
-		case liveDataRes := <-request.ReturnPayload:
-			fmt.Println("adasd")
-			payload = liveDataRes
-			reply = true
-			break
+		// waiting for request to be processed and retrieval of payload
+		for !reply {
+			select {
+			case liveDataRes := <-request.ReturnPayload:
+				payload = liveDataRes
+				reply = true
+				break
+			}
 		}
-	}
 
-	request = nil
-	return payload
+		request = nil
+		return payload
+	}
+	return []byte{}
 }

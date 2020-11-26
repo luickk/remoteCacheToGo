@@ -10,7 +10,8 @@ func main() {
 
   client := cacheClient.New("127.0.0.1", 8000)
 
-  client.AddKeyVal("remote1", []byte("test1"))
+  client.AddKeyVal("remote", []byte("test1"))
+  fmt.Println("Written val test1 to key remote")
 
-  fmt.Println(string(client.GetKeyVal("remote1")))
+  fmt.Println("Read val from key remote: "+string(client.GetKeyVal("remote")))
 }

@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"strconv"
+  "remoteCacheToGo/internal/remoteCacheToGo"
 )
 
 type PushPullRequest struct {
@@ -29,8 +30,7 @@ func (cache Cache) CacheHandler() {
 	for {
 		select {
 		case ppCacheOp := <-cache.PushPullRequestCh:
-			// pull operation
-			if len(ppCacheOp.Data) <= 0 {
+			if len(ppCacheOp.Data) <= 0 { // pull operation
 				ppCacheOp.ReturnPayload <- cache.cacheMap[ppCacheOp.Key]
 			} else if len(ppCacheOp.Data) > 0 { // push operation
 				cache.cacheMap[ppCacheOp.Key] = ppCacheOp.Data
@@ -96,38 +96,41 @@ func New() Cache {
   return cache
 }
 
-func (cache Cache) AddKeyVal(key string, val []byte) {
-	fmt.Println("Value inserted to key: " + key)
-	fmt.Println("Value: " + string(val))
-	request := new(PushPullRequest)
-	request.Key = key
-	request.Data = val
+func (cache Cache) AddKeyVal(key string, val []byte) bool {
+  if util.CharacterWhiteList(key) {
+		request := new(PushPullRequest)
+		request.Key = key
+		request.Data = val
 
-  cache.PushPullRequestCh <- request
+	  cache.PushPullRequestCh <- request
 
-	request = nil
+		request = nil
+		return true
+	}
+	return false
 }
 
 func (cache Cache) GetKeyVal(key string) []byte {
-	fmt.Println("Value requested")
-	request := new(PushPullRequest)
-	request.Key = key
-	request.ReturnPayload = make(chan []byte)
-  cache.PushPullRequestCh <- request
+  if util.CharacterWhiteList(key) {
+		request := new(PushPullRequest)
+		request.Key = key
+		request.ReturnPayload = make(chan []byte)
+	  cache.PushPullRequestCh <- request
 
-	reply := false
-	payload := []byte{}
+		reply := false
+		payload := []byte{}
 
-	// wainting for request to be processed and retrieval of payload
-	for !reply {
-		select {
-		case liveDataRes := <-request.ReturnPayload:
-			payload = liveDataRes
-			reply = true
-			break
+		// wainting for request to be processed and retrieval of payload
+		for !reply {
+			select {
+			case liveDataRes := <-request.ReturnPayload:
+				payload = liveDataRes
+				reply = true
+				break
+			}
 		}
+		request = nil
+		return payload
 	}
-
-	request = nil
-	return payload
+	return []byte{}
 }
