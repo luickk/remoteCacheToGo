@@ -2,6 +2,8 @@ package main
 
 import (
   "fmt"
+  "strconv"
+  "time"
   "remoteCacheToGo/cmd/cacheClient"
 )
 
@@ -14,4 +16,23 @@ func main() {
   fmt.Println("Written val test1 to key remote")
 
   fmt.Println("Read val from key remote: "+string(client.GetKeyVal("remote")))
+
+  go concurrentTestInstanceA(client)
+  concurrentTestInstanceB(client)
+}
+func concurrentTestInstanceA(client cacheClient.RemoteCache) {
+  i := 0
+  for {
+    i++
+    client.AddKeyVal("remote"+strconv.Itoa(i), []byte("remote"+strconv.Itoa(i)))
+  }
+}
+
+func concurrentTestInstanceB(client cacheClient.RemoteCache) {
+  i := 0
+  for {
+    i++
+    fmt.Println("remote"+strconv.Itoa(i) + ": " + string(client.GetKeyVal("remote"+strconv.Itoa(i))))
+    time.Sleep(10 * time.Millisecond)
+    }
 }

@@ -55,15 +55,17 @@ func (cache RemoteCache) pushPullRequestHandler() {
 			for _, data := range netDataSeperated {
 				if len(data) >= 1 {
 						dataDelimSplitByte := bytes.SplitN(data, []byte("-"), 3)
-						key := string(dataDelimSplitByte[0])
-						operation := string(dataDelimSplitByte[1])
-						payload := dataDelimSplitByte[2]
-						if operation == ">" {
-							request := new(PushPullRequest)
-							request.Key = key
-							request.Data = payload
-							cacheListener <- request
-							request = nil
+						if len(dataDelimSplitByte) >= 3 {
+							key := string(dataDelimSplitByte[0])
+							operation := string(dataDelimSplitByte[1])
+							payload := dataDelimSplitByte[2]
+							if operation == ">" {
+								request := new(PushPullRequest)
+								request.Key = key
+								request.Data = payload
+								cacheListener <- request
+								request = nil
+							}
 						}
 				}
 			}

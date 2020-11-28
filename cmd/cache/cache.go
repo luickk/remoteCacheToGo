@@ -74,13 +74,15 @@ func (cache Cache) RemoteConnHandler(port int) {
 				for _, data := range netDataSeperated {
 					if len(data) >= 1 {
 							dataDelimSplitByte := bytes.SplitN(data, []byte("-"), 3)
-							key := string(dataDelimSplitByte[0])
-							operation := string(dataDelimSplitByte[1])
-							payload := dataDelimSplitByte[2]
-							if operation == ">" { //pull
-								c.Write(append(append([]byte(key+"->-"), cache.GetKeyVal(key)...), []byte("\r")...))
-							} else if operation == "<" { // push
-								cache.AddKeyVal(key, payload)
+							if len(dataDelimSplitByte) >= 3 {	
+								key := string(dataDelimSplitByte[0])
+								operation := string(dataDelimSplitByte[1])
+								payload := dataDelimSplitByte[2]
+								if operation == ">" { //pull
+									c.Write(append(append([]byte(key+"->-"), cache.GetKeyVal(key)...), []byte("\r")...))
+								} else if operation == "<" { // push
+									cache.AddKeyVal(key, payload)
+								}
 							}
 						}
 					}

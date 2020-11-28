@@ -6,9 +6,9 @@ import (
 
 func CharacterWhiteList(input string) bool {
     for _, r := range input {
-        if !unicode.IsLetter(r) {
-            return false
+        if unicode.IsLetter(r) || unicode.IsNumber(r) {
+            return true
         }
     }
-    return true
+    return false
 }
