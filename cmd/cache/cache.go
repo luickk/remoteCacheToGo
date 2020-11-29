@@ -23,7 +23,7 @@ type Cache struct {
 }
 
 // tcpConnBuffer defines the buffer size of the TCP conn reader
-var tcpConnBuffer = 1024
+var tcpConnBuffer = 2048
 
 func (cache Cache) CacheHandler() {
 	cache.CacheHandlerStarted = true
@@ -59,6 +59,7 @@ func (cache Cache) RemoteConnHandler(port int) {
 			data := make([]byte, tcpConnBuffer)
 			for {
 				n, err := bufio.NewReader(c).Read(data)
+				fmt.Println(string(data))
 				if err != nil {
 					fmt.Println(err)
 					return
@@ -74,15 +75,19 @@ func (cache Cache) RemoteConnHandler(port int) {
 				for _, data := range netDataSeperated {
 					if len(data) >= 1 {
 							dataDelimSplitByte := bytes.SplitN(data, []byte("-"), 3)
-							if len(dataDelimSplitByte) >= 3 {	
+							if len(dataDelimSplitByte) >= 3 {
 								key := string(dataDelimSplitByte[0])
 								operation := string(dataDelimSplitByte[1])
 								payload := dataDelimSplitByte[2]
 								if operation == ">" { //pull
+									fmt.Println("SENT")
+									fmt.Println(key)
 									c.Write(append(append([]byte(key+"->-"), cache.GetKeyVal(key)...), []byte("\r")...))
 								} else if operation == "<" { // push
 									cache.AddKeyVal(key, payload)
 								}
+							} else {
+									fmt.Println("parsing error")
 							}
 						}
 					}

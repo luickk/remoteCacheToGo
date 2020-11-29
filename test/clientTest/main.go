@@ -16,6 +16,7 @@ func main() {
   fmt.Println("Written val test1 to key remote")
 
   fmt.Println("Read val from key remote: "+string(client.GetKeyVal("remote")))
+  fmt.Println(": "+string(client.GetKeyVal("remotesada")))
 
   go concurrentTestInstanceA(client)
   concurrentTestInstanceB(client)
@@ -24,7 +25,7 @@ func concurrentTestInstanceA(client cacheClient.RemoteCache) {
   i := 0
   for {
     i++
-    client.AddKeyVal("remote"+strconv.Itoa(i), []byte("remote"+strconv.Itoa(i)))
+    // client.AddKeyVal("remote"+strconv.Itoa(i), []byte("remote"+strconv.Itoa(i)))
   }
 }
 

@@ -14,6 +14,7 @@ type PushPullRequest struct {
 
 	ReturnPayload chan []byte
 	Data []byte
+	Processed bool
 }
 
 type RemoteCache struct {
@@ -23,7 +24,7 @@ type RemoteCache struct {
 }
 
 // tcpConnBuffer defines the buffer size of the TCP conn reader
-var tcpConnBuffer = 1024
+var tcpConnBuffer = 2048
 
 func connectToRemoteHandler(address string, port int) (bool, net.Conn) {
   c, err := net.Dial("tcp", address+":"+strconv.Itoa(port))
@@ -77,14 +78,17 @@ func (cache RemoteCache) pushPullRequestHandler() {
 		case ppCacheOp := <-cache.PushPullRequestCh:
 			if len(ppCacheOp.Data) <= 0 { // pull operation
 				ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
+				fmt.Println("PULL")
 				cache.conn.Write(append([]byte(ppCacheOp.Key + "->-"), []byte("\r")...))
 			} else if len(ppCacheOp.Data) > 0 { // push operation
+				fmt.Println("PUSH")
 				cache.conn.Write(append(append([]byte(ppCacheOp.Key + "-<-"), ppCacheOp.Data...), []byte("\r")...))
 			}
 		case cacheReply := <-cacheListener:
 			for _, req := range ppCacheOpBuffer {
-				if cacheReply.Key == req.Key {
+				if cacheReply.Key == req.Key  && !req.Processed {
 					req.ReturnPayload <- cacheReply.Data
+					req.Processed = true
 				}
 			}
 		}
