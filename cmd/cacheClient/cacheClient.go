@@ -37,18 +37,18 @@ func connectToRemoteHandler(address string, port int) (bool, net.Conn) {
 
 func (cache RemoteCache) pushPullRequestHandler() {
   cache.CacheHandlerStarted = true
-	data := make([]byte, tcpConnBuffer)
 	cacheListener := make(chan *PushPullRequest)
 	var ppCacheOpBuffer []*PushPullRequest
 
 	go func(conn net.Conn, cacheListener chan *PushPullRequest) {
 		for {
+			data := make([]byte, tcpConnBuffer)
 			n, err := bufio.NewReader(conn).Read(data)
 			if err != nil {
 				fmt.Println(err)
 			}
 			data = data[:n]
-			netDataSeperated := bytes.Split(data, []byte("\r"))
+			netDataSeperated := bytes.Split(data, []byte("\rnr"))
 			if err != nil {
 				fmt.Println(err)
 			}
@@ -78,16 +78,16 @@ func (cache RemoteCache) pushPullRequestHandler() {
 		case ppCacheOp := <-cache.PushPullRequestCh:
 			if len(ppCacheOp.Data) <= 0 { // pull operation
 				ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
-				fmt.Println("PULL")
-				cache.conn.Write(append([]byte(ppCacheOp.Key + "->-"), []byte("\r")...))
+				cache.conn.Write(append([]byte(ppCacheOp.Key + "->-"), []byte("\rnr")...))
 			} else if len(ppCacheOp.Data) > 0 { // push operation
-				fmt.Println("PUSH")
-				cache.conn.Write(append(append([]byte(ppCacheOp.Key + "-<-"), ppCacheOp.Data...), []byte("\r")...))
+				cache.conn.Write(append(append([]byte(ppCacheOp.Key + "-<-"), ppCacheOp.Data...), []byte("\rnr")...))
 			}
 		case cacheReply := <-cacheListener:
 			for _, req := range ppCacheOpBuffer {
 				if cacheReply.Key == req.Key  && !req.Processed {
 					req.ReturnPayload <- cacheReply.Data
+
+				} else if !req.Processed {
 					req.Processed = true
 				}
 			}

@@ -56,23 +56,23 @@ func (cache Cache) RemoteConnHandler(port int) {
 
 		go func(c net.Conn, cache Cache) {
 			fmt.Printf("New client connected to %s \n", c.RemoteAddr().String())
-			data := make([]byte, tcpConnBuffer)
 			for {
+				data := make([]byte, tcpConnBuffer)
 				n, err := bufio.NewReader(c).Read(data)
-				fmt.Println(string(data))
 				if err != nil {
 					fmt.Println(err)
 					return
 				}
 				data = data[:n]
 
-				netDataSeperated := bytes.Split(data, []byte("\r"))
+				netDataSeperated := bytes.Split(data, []byte("\rnr"))
 				if err != nil {
 					fmt.Println(err)
 					return
 				}
 
 				for _, data := range netDataSeperated {
+					// fmt.Println(strconv.Itoa(len(data)) + ": " + string(data))
 					if len(data) >= 1 {
 							dataDelimSplitByte := bytes.SplitN(data, []byte("-"), 3)
 							if len(dataDelimSplitByte) >= 3 {
@@ -80,9 +80,7 @@ func (cache Cache) RemoteConnHandler(port int) {
 								operation := string(dataDelimSplitByte[1])
 								payload := dataDelimSplitByte[2]
 								if operation == ">" { //pull
-									fmt.Println("SENT")
-									fmt.Println(key)
-									c.Write(append(append([]byte(key+"->-"), cache.GetKeyVal(key)...), []byte("\r")...))
+									c.Write(append(append([]byte(key+"->-"), cache.GetKeyVal(key)...), []byte("\rnr")...))
 								} else if operation == "<" { // push
 									cache.AddKeyVal(key, payload)
 								}

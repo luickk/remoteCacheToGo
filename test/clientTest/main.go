@@ -25,7 +25,8 @@ func concurrentTestInstanceA(client cacheClient.RemoteCache) {
   i := 0
   for {
     i++
-    // client.AddKeyVal("remote"+strconv.Itoa(i), []byte("remote"+strconv.Itoa(i)))
+    client.AddKeyVal("remote"+strconv.Itoa(i), []byte("remote"+strconv.Itoa(i)))
+    time.Sleep(1 * time.Millisecond)
   }
 }
 
