@@ -10,7 +10,11 @@ import (
 func main() {
   fmt.Println("Client test")
 
-  client := cacheClient.New("127.0.0.1", 8000)
+  client, err := cacheClient.New("127.0.0.1", 8000)
+  if err != nil {
+    fmt.Println(err)
+    return
+  }
 
   client.AddKeyVal("remote", []byte("test1"))
   fmt.Println("Written val test1 to key remote")

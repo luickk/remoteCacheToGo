@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"bufio"
   "remoteCacheToGo/internal/remoteCacheToGo"
+  "errors"
 )
 
 type PushPullRequest struct {
@@ -46,6 +47,7 @@ func (cache RemoteCache) pushPullRequestHandler() {
 			n, err := bufio.NewReader(conn).Read(data)
 			if err != nil {
 				fmt.Println(err)
+				return
 			}
 			data = data[:n]
 			netDataSeperated := bytes.Split(data, []byte("\rnr"))
@@ -95,14 +97,14 @@ func (cache RemoteCache) pushPullRequestHandler() {
 	}
 }
 
-func New(address string, port int) RemoteCache {
+func New(address string, port int) (RemoteCache, error) {
 	connected, conn := connectToRemoteHandler(address, port)
-  if !connected {
-    fmt.Println("could not connect to given address")
-  }
   cache := RemoteCache{conn, make(chan *PushPullRequest), false}
+  if !connected {
+		return cache, errors.New("timeout")
+  }
   go cache.pushPullRequestHandler()
-	return cache
+	return cache, nil
 }
 
 func (cache RemoteCache) AddKeyVal(key string, val []byte) bool {
