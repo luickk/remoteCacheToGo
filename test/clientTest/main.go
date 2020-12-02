@@ -10,7 +10,7 @@ import (
 func main() {
   fmt.Println("Client test")
 
-  client, err := cacheClient.New("127.0.0.1", 8000)
+  client, err := cacheClient.New("127.0.0.1", 8000, true)
   if err != nil {
     fmt.Println(err)
     return
@@ -21,9 +21,9 @@ func main() {
 
   fmt.Println("Read val from key remote: "+string(client.GetKeyVal("remote")))
   fmt.Println(": "+string(client.GetKeyVal("remotesada")))
-
-  go concurrentTestInstanceA(client)
-  concurrentTestInstanceB(client)
+  //
+  // go concurrentTestInstanceA(client)
+  // concurrentTestInstanceB(client)
 }
 func concurrentTestInstanceA(client cacheClient.RemoteCache) {
   i := 0

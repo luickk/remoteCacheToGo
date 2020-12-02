@@ -20,11 +20,11 @@ func main() {
 
   fmt.Println("Requestd key: "+string(cDb.GetEntryFromCache("test", "testKey")))
 
-  go cDb.Db["remote"].RemoteConnHandler(8000)
+  cDb.Db["remote"].RemoteTlsConnHandler(8000)
 
 
-  go concurrentTestInstanceA(cDb)
-  concurrentTestInstanceB(cDb)
+  // go concurrentTestInstanceA(cDb)
+  // concurrentTestInstanceB(cDb)
 }
 
 func concurrentTestInstanceA(cDb cacheDb.CacheDb) {
