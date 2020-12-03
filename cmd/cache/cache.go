@@ -26,33 +26,6 @@ type Cache struct {
 // tcpConnBuffer defines the buffer size of the TCP conn reader
 var tcpConnBuffer = 2048
 
-// optional, only requried if TLS is used
-// !Cert/ PKey ONLY for testing purposes!
-const serverKey = `-----BEGIN EC PARAMETERS-----
-BggqhkjOPQMBBw==
------END EC PARAMETERS-----
------BEGIN EC PRIVATE KEY-----
-MHcCAQEEIHg+g2unjA5BkDtXSN9ShN7kbPlbCcqcYdDu+QeV8XWuoAoGCCqGSM49
-AwEHoUQDQgAEcZpodWh3SEs5Hh3rrEiu1LZOYSaNIWO34MgRxvqwz1FMpLxNlx0G
-cSqrxhPubawptX5MSr02ft32kfOlYbaF5Q==
------END EC PRIVATE KEY-----
-`
-
-const serverCert = `-----BEGIN CERTIFICATE-----
-MIIB+TCCAZ+gAwIBAgIJAL05LKXo6PrrMAoGCCqGSM49BAMCMFkxCzAJBgNVBAYT
-AkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRlcm5ldCBXaWRn
-aXRzIFB0eSBMdGQxEjAQBgNVBAMMCWxvY2FsaG9zdDAeFw0xNTEyMDgxNDAxMTNa
-Fw0yNTEyMDUxNDAxMTNaMFkxCzAJBgNVBAYTAkFVMRMwEQYDVQQIDApTb21lLVN0
-YXRlMSEwHwYDVQQKDBhJbnRlcm5ldCBXaWRnaXRzIFB0eSBMdGQxEjAQBgNVBAMM
-CWxvY2FsaG9zdDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABHGaaHVod0hLOR4d
-66xIrtS2TmEmjSFjt+DIEcb6sM9RTKS8TZcdBnEqq8YT7m2sKbV+TEq9Nn7d9pHz
-pWG2heWjUDBOMB0GA1UdDgQWBBR0fqrecDJ44D/fiYJiOeBzfoqEijAfBgNVHSME
-GDAWgBR0fqrecDJ44D/fiYJiOeBzfoqEijAMBgNVHRMEBTADAQH/MAoGCCqGSM49
-BAMCA0gAMEUCIEKzVMF3JqjQjuM2rX7Rx8hancI5KJhwfeKu1xbyR7XaAiEA2UT7
-1xOP035EcraRmWPe7tO0LpXgMxlh2VItpc2uc2w=
------END CERTIFICATE-----
-`
-
 func (cache Cache) CacheHandler() {
 	cache.CacheHandlerStarted = true
 	for {
@@ -122,7 +95,7 @@ func (cache Cache) RemoteConnHandler(port int) {
 	}
 }
 
-func (cache Cache) RemoteTlsConnHandler(port int) {
+func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, serverCert string, serverKey string) {
 	cer, err := tls.X509KeyPair([]byte(serverCert), []byte(serverKey))
 		if err != nil {
 			fmt.Println(err)
@@ -143,7 +116,9 @@ func (cache Cache) RemoteTlsConnHandler(port int) {
 		}
 
 		go func(c net.Conn, cache Cache) {
-			fmt.Printf("New client connected to %s \n", c.RemoteAddr().String())
+			fmt.Println("New client connected to %s \n", c.RemoteAddr().String())
+			fmt.Println("waiting for authentication")
+			var authenticated = false
 			for {
 				data := make([]byte, tcpConnBuffer)
 				n, err := bufio.NewReader(c).Read(data)
@@ -162,6 +137,7 @@ func (cache Cache) RemoteTlsConnHandler(port int) {
 				for _, data := range netDataSeperated {
 					// fmt.Println(strconv.Itoa(len(data)) + ": " + string(data))
 					if len(data) >= 1 {
+						if authenticated {
 							dataDelimSplitByte := bytes.SplitN(data, []byte("-"), 3)
 							if len(dataDelimSplitByte) >= 3 {
 								key := string(dataDelimSplitByte[0])
@@ -173,11 +149,19 @@ func (cache Cache) RemoteTlsConnHandler(port int) {
 									cache.AddKeyVal(key, payload)
 								}
 							} else {
-									fmt.Println("parsing error")
+								fmt.Println("parsing error")
+							}
+						} else {
+							if string(data) == pwHash {
+								fmt.Println("Authentification successful")
+								authenticated = true
+							} else {
+								fmt.Println("Authentification unsuccessful")
 							}
 						}
 					}
 				}
+			}
 		}(c, cache)
 	}
 }

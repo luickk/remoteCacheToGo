@@ -29,24 +29,6 @@ type RemoteCache struct {
 // tcpConnBuffer defines the buffer size of the TCP conn reader
 var tcpConnBuffer = 2048
 
-
-// optional, only requried if TLS is used
-// !Cert ONLY for testing purposes!
-const rootCert = `-----BEGIN CERTIFICATE-----
-MIIB+TCCAZ+gAwIBAgIJAL05LKXo6PrrMAoGCCqGSM49BAMCMFkxCzAJBgNVBAYT
-AkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRlcm5ldCBXaWRn
-aXRzIFB0eSBMdGQxEjAQBgNVBAMMCWxvY2FsaG9zdDAeFw0xNTEyMDgxNDAxMTNa
-Fw0yNTEyMDUxNDAxMTNaMFkxCzAJBgNVBAYTAkFVMRMwEQYDVQQIDApTb21lLVN0
-YXRlMSEwHwYDVQQKDBhJbnRlcm5ldCBXaWRnaXRzIFB0eSBMdGQxEjAQBgNVBAMM
-CWxvY2FsaG9zdDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABHGaaHVod0hLOR4d
-66xIrtS2TmEmjSFjt+DIEcb6sM9RTKS8TZcdBnEqq8YT7m2sKbV+TEq9Nn7d9pHz
-pWG2heWjUDBOMB0GA1UdDgQWBBR0fqrecDJ44D/fiYJiOeBzfoqEijAfBgNVHSME
-GDAWgBR0fqrecDJ44D/fiYJiOeBzfoqEijAMBgNVHRMEBTADAQH/MAoGCCqGSM49
-BAMCA0gAMEUCIEKzVMF3JqjQjuM2rX7Rx8hancI5KJhwfeKu1xbyR7XaAiEA2UT7
-1xOP035EcraRmWPe7tO0LpXgMxlh2VItpc2uc2w=
------END CERTIFICATE-----
-`
-
 func connectToRemoteHandler(address string, port int) (bool, net.Conn) {
   c, err := net.Dial("tcp", address+":"+strconv.Itoa(port))
   if err != nil {
@@ -56,7 +38,7 @@ func connectToRemoteHandler(address string, port int) (bool, net.Conn) {
   return true, c
 }
 
-func connectToTlsRemoteHandler(address string, port int) (bool, net.Conn) {
+func connectToTlsRemoteHandler(address string, port int, pwHash string, rootCert string) (bool, net.Conn) {
 	roots := x509.NewCertPool()
 	ok := roots.AppendCertsFromPEM([]byte(rootCert))
 	if !ok {
@@ -69,6 +51,7 @@ func connectToTlsRemoteHandler(address string, port int) (bool, net.Conn) {
 		fmt.Println(err)
     return false, c
 	}
+	c.Write([]byte(pwHash))
   return true, c
 }
 
@@ -134,11 +117,11 @@ func (cache RemoteCache) pushPullRequestHandler() {
 	}
 }
 
-func New(address string, port int, tls bool) (RemoteCache, error) {
+func New(address string, port int, tls bool, pwHash string, rootCert string) (RemoteCache, error) {
 	var connected bool
 	var conn net.Conn
 	if tls {
-		connected, conn = connectToTlsRemoteHandler(address, port)
+		connected, conn = connectToTlsRemoteHandler(address, port, pwHash, rootCert)
 	} else {
 		connected, conn = connectToRemoteHandler(address, port)
 	}
