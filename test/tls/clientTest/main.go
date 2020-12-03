@@ -1,4 +1,16 @@
------BEGIN CERTIFICATE-----
+package main
+
+import (
+  "fmt"
+  "strconv"
+  "time"
+  "remoteCacheToGo/cmd/cacheClient"
+)
+
+
+// optional, only requried if TLS is used
+// !Cert ONLY for testing purposes!
+const rootCert = `-----BEGIN CERTIFICATE-----
 MIIFPzCCAyegAwIBAgIJAM2XHWKChMveMA0GCSqGSIb3DQEBBQUAMFIxCzAJBgNV
 BAYTAkNOMQwwCgYDVQQIDANQRUsxETAPBgNVBAcMCEJlaSBKaW5nMQ8wDQYDVQQK
 DAZWTXdhcmUxETAPBgNVBAMMCEhhcmJvckNBMB4XDTIwMTIwMzE5MjYyMFoXDTIx
@@ -29,3 +41,44 @@ TGbKqyGBKmFHRACE35Mme6Ekd1OK1YJmoOMPlOnf/5g+TlJSO16HOVpBnlLJ8ESV
 JoGNvi2cyt37D0oUioYWJZPhr4ZHWfe9Hsbrq5lK/9qkNG7ozSHETUgxw4eb7q2w
 X5/W
 -----END CERTIFICATE-----
+`
+
+func main() {
+  fmt.Println("Client test")
+
+  // creates new cacheClient struct
+  // params 1: remote Cache IP, remote Cache port, wether connect with TLS encryption, root Cert for TLS encryption
+  client, err := cacheClient.New("127.0.0.1", 8000, true, "test", rootCert)
+  if err != nil {
+    fmt.Println(err)
+    return
+  }
+
+  // writing to connected cache to key "remote" with val "test1"
+  client.AddKeyVal("remote", []byte("test1"))
+  fmt.Println("Written val test1 to key remote")
+
+  // requesting key value from connected cache from key "remote"
+  fmt.Println("Read val from key remote: "+string(client.GetKeyVal("remote")))
+
+  // starting testing routines
+  go concurrentTestInstanceA(client)
+  concurrentTestInstanceB(client)
+}
+func concurrentTestInstanceA(client cacheClient.RemoteCache) {
+  i := 0
+  for {
+    i++
+    client.AddKeyVal("remote"+strconv.Itoa(i), []byte("remote"+strconv.Itoa(i)))
+    time.Sleep(1 * time.Millisecond)
+  }
+}
+
+func concurrentTestInstanceB(client cacheClient.RemoteCache) {
+  i := 0
+  for {
+    i++
+    fmt.Println("remote"+strconv.Itoa(i) + ": " + string(client.GetKeyVal("remote"+strconv.Itoa(i))))
+    time.Sleep(10 * time.Millisecond)
+    }
+}
