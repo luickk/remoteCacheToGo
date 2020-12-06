@@ -1,5 +1,5 @@
 # Remote Cache To Go
 
-This project creates an hybrid between remote database and a local embedded cache storage such as [cache2go](https://github.com/muesli/cache2go).
+This project creates a remote-database and an embedded-cache storage hybrid which enables live data synchronisation as well as encrypted and authorised data exchange.  [cache2go](https://github.com/muesli/cache2go).
 
 ![sketch.png](media/sketch.png)

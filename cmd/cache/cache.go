@@ -6,8 +6,11 @@ import (
 	"bufio"
 	"bytes"
 	"strconv"
+	"time"
+	"strings"
 	"crypto/tls"
-  "remoteCacheToGo/internal/remoteCacheToGo"
+  "remoteCacheToGo/internal/util"
+  "remoteCacheToGo/internal/goDosProtection"
 )
 
 // struct to handle any requests for the CacheHandler which operates on cache memory
@@ -121,6 +124,10 @@ func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, serverCert stri
 	if err != nil {
 		fmt.Println(err)
 	}
+
+	// initiating DOS protection with 10 second reconnection delay
+  dosProt := goDosProtection.New(10)
+
 	// initiating config form key pair
 	config := &tls.Config{Certificates: []tls.Certificate{cer}}
 
@@ -137,62 +144,83 @@ func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, serverCert stri
 			fmt.Println(err)
 			return
 		}
-		// connection listener waits for incoming data
-		// incoming data is parsed and possible request answers are pushed to back to the CacheHandler
-		go func(c net.Conn, cache Cache) {
-			fmt.Println("New client connected to %s \n", c.RemoteAddr().String())
-			fmt.Println("waiting for authentication")
-			// true if client sent correct password hash
-			var authenticated = false
-			for {
-				data := make([]byte, tcpConnBuffer)
-				n, err := bufio.NewReader(c).Read(data)
-				if err != nil {
-					fmt.Println(err)
-					return
-				}
-				data = data[:n]
 
-				// splitting data to prevent overflow confusion
-				netDataSeperated := bytes.Split(data, []byte("\rnr"))
-				if err != nil {
-					fmt.Println(err)
-					return
-				}
+		// client is not banned
+		if !dosProt.Client(strings.Split(c.RemoteAddr().String(), ":")[0]) {
+		  fmt.Println("Accepted client connection")
 
-				for _, data := range netDataSeperated {
-					if len(data) >= 1 {
-						if authenticated {
-							// parsing protocol (you can find more about the protocol design in the README)
-							dataDelimSplitByte := bytes.SplitN(data, []byte("-"), 3)
-							if len(dataDelimSplitByte) >= 3 {
-								key := string(dataDelimSplitByte[0])
-								operation := string(dataDelimSplitByte[1])
-								payload := dataDelimSplitByte[2]
-								// if request operation is pull, the pull request is replied
-								if operation == ">" { //pull
-									// replying to pull request with requested data
-									c.Write(append(append([]byte(key+"->-"), cache.GetKeyVal(key)...), []byte("\rnr")...))
-									// executing push request
-								} else if operation == "<" { // push
-									// setting value for given key
-									cache.AddKeyVal(key, payload)
+			// connection listener waits for incoming data
+			// incoming data is parsed and possible request answers are pushed to back to the CacheHandler
+			go func(c net.Conn, cache Cache) {
+				fmt.Println("New client connected to %s \n", c.RemoteAddr().String())
+				fmt.Println("waiting for authentication")
+				// true if client sent correct password hash
+				var authenticated = false
+				// limits authentification tries
+				var bruteForceTimer = false
+				var bruteForceProtectionTime = 1
+				for {
+					data := make([]byte, tcpConnBuffer)
+					n, err := bufio.NewReader(c).Read(data)
+					if err != nil {
+						fmt.Println(err)
+						return
+					}
+					data = data[:n]
+
+					// splitting data to prevent overflow confusion
+					netDataSeperated := bytes.Split(data, []byte("\rnr"))
+					if err != nil {
+						fmt.Println(err)
+						return
+					}
+
+					for _, data := range netDataSeperated {
+						if len(data) >= 1 {
+							if authenticated {
+								// parsing protocol (you can find more about the protocol design in the README)
+								dataDelimSplitByte := bytes.SplitN(data, []byte("-"), 3)
+								if len(dataDelimSplitByte) >= 3 {
+									key := string(dataDelimSplitByte[0])
+									operation := string(dataDelimSplitByte[1])
+									payload := dataDelimSplitByte[2]
+									// if request operation is pull, the pull request is replied
+									if operation == ">" { //pull
+										// replying to pull request with requested data
+										c.Write(append(append([]byte(key+"->-"), cache.GetKeyVal(key)...), []byte("\rnr")...))
+										// executing push request
+									} else if operation == "<" { // push
+										// setting value for given key
+										cache.AddKeyVal(key, payload)
+									}
+								} else {
+									fmt.Println("parsing error")
 								}
 							} else {
-								fmt.Println("parsing error")
-							}
-						} else {
-							if string(data) == pwHash {
-								fmt.Println("Authentification successful")
-								authenticated = true
-							} else {
-								fmt.Println("Authentification unsuccessful")
+								if string(data) == pwHash  && !bruteForceTimer {
+									fmt.Println("Authentification successful")
+									authenticated = true
+								} else if bruteForceTimer {
+									fmt.Println("Client tried to authenticate in brute force protection time")
+								} else {
+									fmt.Println("Authentification unsuccessful")
+									bruteForceTimer = true
+									timer := time.NewTimer(time.Second*time.Duration(bruteForceProtectionTime))
+
+									go func() {
+										<-timer.C
+										bruteForceTimer = false
+							    }()
+								}
 							}
 						}
 					}
 				}
-			}
-		}(c, cache)
+			}(c, cache)
+		// client is banned
+		} else {
+		 fmt.Println("Refused client connection")
+		}
 	}
 }
 
