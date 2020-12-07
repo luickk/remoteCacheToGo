@@ -117,8 +117,9 @@ func (cache Cache) RemoteConnHandler(port int) {
 
 // provides network interface for given cache
 // provide TLS encryption and password authentication
-// requres valid and signed public/ private key pair and password hash to validate against
-func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, serverCert string, serverKey string) {
+// provide valid and signed public/ private key pair and password hash to validate against
+// parameters: port, password Hash (please don't use unhashed pw strings), dosProtection enables delay between reconnects by ip, server Certificate, private Key
+func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, dosProtection bool, serverCert string, serverKey string) {
 	// initiating provided key pair
 	cer, err := tls.X509KeyPair([]byte(serverCert), []byte(serverKey))
 	if err != nil {
@@ -146,7 +147,7 @@ func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, serverCert stri
 		}
 
 		// client is not banned
-		if !dosProt.Client(strings.Split(c.RemoteAddr().String(), ":")[0]) {
+		if !dosProt.Client(strings.Split(c.RemoteAddr().String(), ":")[0]) || !dosProtection {
 		  fmt.Println("Accepted client connection")
 
 			// connection listener waits for incoming data

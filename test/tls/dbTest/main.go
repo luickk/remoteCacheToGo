@@ -113,11 +113,11 @@ func main() {
   }
 
   // pulling data from cache "test" at key "testKey"
-  fmt.Println("Requestd key: "+string(cDb.GetEntryFromCache("test", "testKey")))
+  fmt.Println("Requestd key: " + string(cDb.GetEntryFromCache("test", "testKey")))
 
-  // creating encrypted network interfce for cache with name "remote" and the password hash "test"
+  // creating encrypted network interface for cache with name "remote" and the password hash "test" and enabled dosProtection
   // serverCert & Key are passed hardcoded only for testing purposes
-  cDb.Db["remote"].RemoteTlsConnHandler(8000, "test", serverCert, serverKey)
+  cDb.Db["remote"].RemoteTlsConnHandler(8000, "test", true, serverCert, serverKey)
 
 
   // runing test instances

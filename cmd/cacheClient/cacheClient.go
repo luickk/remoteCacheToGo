@@ -9,7 +9,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
   "errors"
-  "remoteCacheToGo/internal/remoteCacheToGo"
+  "remoteCacheToGo/internal/util"
 )
 
 // struct to handle any requests for the pushPullRequestHandler which operates on remoteCache connection

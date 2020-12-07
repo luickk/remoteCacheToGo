@@ -47,7 +47,7 @@ func main() {
   fmt.Println("Client test")
 
   // creates new cacheClient struct
-  // params 1: remote Cache IP, remote Cache port, wether connect with TLS encryption, root Cert for TLS encryption
+  // params remote Cache IP, remote Cache port, wether connect with TLS encryption, root Cert for TLS encryption
   client, err := cacheClient.New("127.0.0.1", 8000, true, "test", rootCert)
   if err != nil {
     fmt.Println(err)
