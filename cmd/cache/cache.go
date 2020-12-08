@@ -9,8 +9,8 @@ import (
 	"time"
 	"strings"
 	"crypto/tls"
-  "remoteCacheToGo/internal/util"
-  "remoteCacheToGo/internal/goDosProtection"
+  "remoteCacheToGo/pkg/util"
+  "remoteCacheToGo/pkg/goDosProtection"
 )
 
 // struct to handle any requests for the CacheHandler which operates on cache memory

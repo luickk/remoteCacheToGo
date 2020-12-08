@@ -1,7 +1,7 @@
 # Remote Cache To Go
 
 This project creates a remote-database and an embedded-cache storage hybrid which enables live data synchronisation as well as encrypted and authorised data exchange.
-By maintaining go's idiomatic routine/ channel **, concurrency is built into the program by design. No mutex and a package that reduces dependencies and synchronisation issues to zero.
+By maintaining go's idiomatic routine/ channel concept, concurrency is built into the program by design. No mutex and a package that reduces dependencies and synchronisation issues to zero.
 
 ## Layout
 
@@ -33,13 +33,13 @@ cDb.Db["remote"].RemoteTlsConnHandler(8000, "test", true, serverCert, serverKey)
 
 
 // creating unencrypted network interface for cache with name "remote"
-cDb.Db["remote"].RemoteConnHandler(8000)
+cDb.Db["remote"].RemoteConnHandler(8001)
 ```
 Client:
 ``` go
 // creates new cacheClient struct and connects to remoteCache instance
 // no tls encryption -> param3: false
-client, err := cacheClient.New("127.0.0.1", 8000, false, "", "")
+client, err := cacheClient.New("127.0.0.1", 8001, false, "", "")
 if err != nil {
   fmt.Println(err)
   return

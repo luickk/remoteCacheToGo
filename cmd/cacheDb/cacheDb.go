@@ -2,7 +2,7 @@ package cacheDb
 
 import (
   "remoteCacheToGo/cmd/cache"
-  "remoteCacheToGo/internal/util"
+  "remoteCacheToGo/pkg/util"
 )
 
 type DbOp struct {
