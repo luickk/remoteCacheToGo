@@ -3,9 +3,24 @@
 This project creates a remote-database and an embedded-cache storage hybrid which enables live data synchronisation as well as encrypted and authorised data exchange.
 By maintaining go's idiomatic routine/ channel concept, concurrency is built into the program by design. No mutex and a package that reduces dependencies and synchronisation issues to zero.
 
-## Layout
+## Concept
+
+All cache objects are referenced in the cache database but can also be implemented directly. Every cache can be made remotely accessible independently or just be used in a local scope. If made remotely accessible, a port has to be provided (in case TLS is enabled a public/ private key pair has to be generated passed as params). With the client part of the package it can then be easily connected to the remote cache and treated just like a local object.
+
+## Specifications
 
 The cacheMap is a simple map type object which is held in cache which enables fast and temporary data storage, exchange or buffering. The remote data transmission is done via. TCP sockets with a very simple protocol to minimize conflicts, tx comm size and to keep the bare-metal like simplicity of the package.
+
+## Features
+
+- concurrency by go idiomacy
+- local key/ val cache
+Caches can be used only in a local scope
+- remote key/ val cache  <br>
+Every cache in the cache database can be made remotely accessible individually
+- key/val cache can be used as queue <br>
+Elements can be requested by the order they have been onto pushed
+
 
 ## Example
 

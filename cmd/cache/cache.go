@@ -24,9 +24,15 @@ type PushPullRequest struct {
 // stores all important data for cache
 type Cache struct {
 	// actual cache holding all data in single cache
-	cacheMap map[string][]byte
+	cacheMap map[string]*CacheVal
 	PushPullRequestCh chan *PushPullRequest
 	CacheHandlerStarted bool
+}
+
+// required since the queueIndex is also in the cache map key
+type CacheVal struct {
+	Data []byte
+	QueueIndex int
 }
 
 // tcpConnBuffer defines the buffer size of the TCP conn reader
@@ -34,6 +40,7 @@ var tcpConnBuffer = 2048
 
 // handles all requests to actual memory operations an the cache map
 func (cache Cache) CacheHandler() {
+	queueIndex := 0
 	cache.CacheHandlerStarted = true
 	for {
 		select {
@@ -41,10 +48,21 @@ func (cache Cache) CacheHandler() {
 			// checking if data attribute contains
 			// if it doesn't no data needs to be pushed
 			if len(ppCacheOp.Data) <= 0 { // pull operation
-				ppCacheOp.ReturnPayload <- cache.cacheMap[ppCacheOp.Key]
-			// if it does, given data is written to key
+				if _, ok := cache.cacheMap[ppCacheOp.Key]; ok {
+					ppCacheOp.ReturnPayload <- cache.cacheMap[ppCacheOp.Key].Data
+				} else {
+					ppCacheOp.ReturnPayload <- []byte{}
+				}
+			// if it does, given data is written to key loc
 			} else if len(ppCacheOp.Data) > 0 { // push operation
-				cache.cacheMap[ppCacheOp.Key] = ppCacheOp.Data
+				val := new(CacheVal)
+				val.QueueIndex = queueIndex
+				val.Data = ppCacheOp.Data
+
+				fmt.Println(ppCacheOp.Key)
+				cache.cacheMap[ppCacheOp.Key] = val
+
+				queueIndex++
 			}
 		}
 	}
@@ -227,7 +245,7 @@ func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, dosProtection b
 
 // initiating new cache struct
 func New() Cache {
-  cache := Cache{make(map[string][]byte), make(chan *PushPullRequest), false}
+  cache := Cache{make(map[string]*CacheVal), make(chan *PushPullRequest), false}
 	cache.CacheHandlerStarted = false
 	// starting cache handler to allow for concurrent memory(cache map) operations
 	go cache.CacheHandler()
