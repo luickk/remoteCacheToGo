@@ -15,6 +15,8 @@ import (
 // struct to handle any requests for the pushPullRequestHandler which operates on remoteCache connection
 type PushPullRequest struct {
 	Key string
+	QueueIndex int
+	ByIndex bool
 
 	ReturnPayload chan []byte
 	Data []byte
@@ -105,6 +107,16 @@ func (cache RemoteCache) pushPullRequestHandler() {
 								// initiates reply to made pullrequest
 								request := new(PushPullRequest)
 								request.Key = key
+								request.ByIndex = false
+								request.Data = payload
+								cacheListener <- request
+								request = nil
+							} else if operation == ">i" {
+								fmt.Println("receved")
+								// initiates reply to made pullrequest
+								request := new(PushPullRequest)
+								request.ByIndex = true
+								request.QueueIndex, _ = strconv.Atoi(key)
 								request.Data = payload
 								cacheListener <- request
 								request = nil
@@ -119,24 +131,39 @@ func (cache RemoteCache) pushPullRequestHandler() {
 		select {
 		// waits for push pull requests for remoteCache
 		case ppCacheOp := <-cache.PushPullRequestCh:
-			if len(ppCacheOp.Data) <= 0 { // pull operation
-				ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
-				// sends pull request string to remoteCache instance
-				cache.conn.Write(append([]byte(ppCacheOp.Key + "->-"), []byte("\rnr")...))
-			} else if len(ppCacheOp.Data) > 0 { // push operation
-			// sends push request string to remoteCache instance
-				cache.conn.Write(append(append([]byte(ppCacheOp.Key + "-<-"), ppCacheOp.Data...), []byte("\rnr")...))
+			if !ppCacheOp.ByIndex {
+				if len(ppCacheOp.Data) <= 0 { // pull operation
+					ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
+					// sends pull request string to remoteCache instance
+					cache.conn.Write(append([]byte(ppCacheOp.Key + "->-"), []byte("\rnr")...))
+				} else if len(ppCacheOp.Data) > 0 { // push operation
+				// sends push request string to remoteCache instance
+					cache.conn.Write(append(append([]byte(ppCacheOp.Key + "-<-"), ppCacheOp.Data...), []byte("\rnr")...))
+				}
+			} else {
+				cache.conn.Write(append([]byte(strconv.Itoa(ppCacheOp.QueueIndex) + "->i-"), []byte("\rnr")...))
 			}
 		// waits for possible reqplies to pull requests from remoteCache
 		case cacheReply := <-cacheListener:
 			for _, req := range ppCacheOpBuffer {
-				// compares made requests from client with replies from remote cache
-				if cacheReply.Key == req.Key  && !req.Processed {
-					// fullfills pull requests data return
-					req.ReturnPayload <- cacheReply.Data
-				} else if !req.Processed {
-					// if request is not answered immeadiatly, request is forgotten
-					req.Processed = true
+				if !cacheReply.ByIndex && !req.ByIndex {
+					// compares made requests from client with replies from remote cache
+					if cacheReply.Key == req.Key  && !req.Processed {
+						// fullfills pull requests data return
+						req.ReturnPayload <- cacheReply.Data
+					} else if !req.Processed {
+						// if request is not answered immeadiatly, request is forgotten
+						req.Processed = true
+					}
+				} else if cacheReply.ByIndex && req.ByIndex {
+					// compares made requests from client with replies from remote cache
+					if cacheReply.QueueIndex == req.QueueIndex  && !req.Processed {
+						// fullfills pull requests data return
+						req.ReturnPayload <- cacheReply.Data
+					} else if !req.Processed {
+						// if request is not answered immeadiatly, request is forgotten
+						req.Processed = true
+					}
 				}
 			}
 		}
@@ -185,6 +212,7 @@ func (cache RemoteCache) GetKeyVal(key string) []byte {
 		// initiating pull request
 		request := new(PushPullRequest)
 		request.Key = key
+		request.ByIndex = false
 		request.ReturnPayload = make(chan []byte)
 	  cache.PushPullRequestCh <- request
 
@@ -205,4 +233,30 @@ func (cache RemoteCache) GetKeyVal(key string) []byte {
 		return payload
 	}
 	return []byte{}
+}
+
+
+// creates pull request for the remoteCache instance
+func (cache RemoteCache) GetIndexVal(index int) []byte {
+	// initiating pull request
+	request := new(PushPullRequest)
+	request.QueueIndex = index
+	request.ByIndex = true
+	request.ReturnPayload = make(chan []byte)
+  cache.PushPullRequestCh <- request
+
+	reply := false
+	payload := []byte{}
+
+	// wainting for request to be processed and retrieval of payload
+	for !reply {
+		select {
+		case liveDataRes := <-request.ReturnPayload:
+			payload = liveDataRes
+			reply = true
+			break
+		}
+	}
+	request = nil
+	return payload
 }

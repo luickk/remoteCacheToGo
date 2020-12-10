@@ -16,6 +16,8 @@ import (
 // struct to handle any requests for the CacheHandler which operates on cache memory
 type PushPullRequest struct {
 	Key string
+	QueueIndex int
+	ByIndex bool
 
 	ReturnPayload chan []byte
 	Data []byte
@@ -47,22 +49,36 @@ func (cache Cache) CacheHandler() {
 		case ppCacheOp := <-cache.PushPullRequestCh:
 			// checking if data attribute contains
 			// if it doesn't no data needs to be pushed
-			if len(ppCacheOp.Data) <= 0 { // pull operation
-				if _, ok := cache.cacheMap[ppCacheOp.Key]; ok {
-					ppCacheOp.ReturnPayload <- cache.cacheMap[ppCacheOp.Key].Data
-				} else {
+			if !ppCacheOp.ByIndex {
+				if len(ppCacheOp.Data) <= 0 { // pull operation
+					if _, ok := cache.cacheMap[ppCacheOp.Key]; ok {
+						ppCacheOp.ReturnPayload <- cache.cacheMap[ppCacheOp.Key].Data
+					} else {
+						ppCacheOp.ReturnPayload <- []byte{}
+					}
+				// if it does, given data is written to key loc
+				} else if len(ppCacheOp.Data) > 0 { // push operation
+					val := new(CacheVal)
+					val.QueueIndex = queueIndex
+					val.Data = ppCacheOp.Data
+
+					fmt.Println(ppCacheOp.Key)
+					cache.cacheMap[ppCacheOp.Key] = val
+
+					queueIndex++
+				}
+			} else {
+				found := false
+				// Iterate over cacheMap CacheVal which stores queue index
+				for _, data := range cache.cacheMap {
+					if data.QueueIndex == ppCacheOp.QueueIndex {
+						found = true
+						ppCacheOp.ReturnPayload <- data.Data
+					}
+				}
+				if !found {
 					ppCacheOp.ReturnPayload <- []byte{}
 				}
-			// if it does, given data is written to key loc
-			} else if len(ppCacheOp.Data) > 0 { // push operation
-				val := new(CacheVal)
-				val.QueueIndex = queueIndex
-				val.Data = ppCacheOp.Data
-
-				fmt.Println(ppCacheOp.Key)
-				cache.cacheMap[ppCacheOp.Key] = val
-
-				queueIndex++
 			}
 		}
 	}
@@ -116,9 +132,13 @@ func (cache Cache) RemoteConnHandler(port int) {
 								key := string(dataDelimSplitByte[0])
 								operation := string(dataDelimSplitByte[1])
 								payload := dataDelimSplitByte[2]
-								if operation == ">" { //pull
-									// reply to pull request from chacheClient
+								if operation == ">" { //pull by key
+									// reply to pull request from chacheClient by key
 									c.Write(append(append([]byte(key+"->-"), cache.GetKeyVal(key)...), []byte("\rnr")...))
+								} else if operation == ">i" { //pull by index
+									// reply to pull request from chacheClient by index
+									fmt.Println("replied")
+									c.Write(append(append([]byte(key+"->i-"), cache.GetKeyVal(key)...), []byte("\rnr")...))
 								} else if operation == "<" { // push
 									// writing push request from client to cache
 									cache.AddKeyVal(key, payload)
@@ -279,6 +299,7 @@ func (cache Cache) GetKeyVal(key string) []byte {
 		request := new(PushPullRequest)
 		request.Key = key
 		request.ReturnPayload = make(chan []byte)
+		request.ByIndex = false
 	  cache.PushPullRequestCh <- request
 
 		reply := false
@@ -297,4 +318,29 @@ func (cache Cache) GetKeyVal(key string) []byte {
 		return payload
 	}
 	return []byte{}
+}
+
+// creates pull request for the remoteCache instance
+func (cache Cache) GetIndexVal(index int) []byte {
+	// initiating pull request
+	request := new(PushPullRequest)
+	request.QueueIndex = index
+	request.ByIndex = true
+	request.ReturnPayload = make(chan []byte)
+  cache.PushPullRequestCh <- request
+
+	reply := false
+	payload := []byte{}
+
+	// wainting for request to be processed and retrieval of payload
+	for !reply {
+		select {
+		case liveDataRes := <-request.ReturnPayload:
+			payload = liveDataRes
+			reply = true
+			break
+		}
+	}
+	request = nil
+	return payload
 }
