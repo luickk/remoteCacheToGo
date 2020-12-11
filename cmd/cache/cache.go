@@ -71,7 +71,10 @@ func (cache Cache) CacheHandler() {
 				found := false
 				// Iterate over cacheMap CacheVal which stores queue index
 				for _, data := range cache.cacheMap {
-					if data.QueueIndex == ppCacheOp.QueueIndex {
+					mappedReqIndex := len(cache.cacheMap) + (0 - len(cache.cacheMap)) * ((ppCacheOp.QueueIndex - 0) / (len(cache.cacheMap) - 0))
+					
+					fmt.Println(mappedReqIndex)
+					if data.QueueIndex == mappedReqIndex {
 						found = true
 						ppCacheOp.ReturnPayload <- data.Data
 					}
@@ -124,7 +127,6 @@ func (cache Cache) RemoteConnHandler(port int) {
 				}
 
 				for _, data := range netDataSeperated {
-					// fmt.Println(strconv.Itoa(len(data)) + ": " + string(data))
 					if len(data) >= 1 {
 							// parsing protocol (you can find more about the protocol design in the README)
 							dataDelimSplitByte := bytes.SplitN(data, []byte("-"), 3)
@@ -136,9 +138,12 @@ func (cache Cache) RemoteConnHandler(port int) {
 									// reply to pull request from chacheClient by key
 									c.Write(append(append([]byte(key+"->-"), cache.GetKeyVal(key)...), []byte("\rnr")...))
 								} else if operation == ">i" { //pull by index
+									index, err := strconv.Atoi(key)
+									if err != nil {
+										fmt.Println(err)
+									}
 									// reply to pull request from chacheClient by index
-									fmt.Println("replied")
-									c.Write(append(append([]byte(key+"->i-"), cache.GetKeyVal(key)...), []byte("\rnr")...))
+									c.Write(append(append([]byte(key+"->i-"), cache.GetIndexVal(index)...), []byte("\rnr")...))
 								} else if operation == "<" { // push
 									// writing push request from client to cache
 									cache.AddKeyVal(key, payload)

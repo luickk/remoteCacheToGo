@@ -112,7 +112,6 @@ func (cache RemoteCache) pushPullRequestHandler() {
 								cacheListener <- request
 								request = nil
 							} else if operation == ">i" {
-								fmt.Println("receved")
 								// initiates reply to made pullrequest
 								request := new(PushPullRequest)
 								request.ByIndex = true
@@ -137,10 +136,11 @@ func (cache RemoteCache) pushPullRequestHandler() {
 					// sends pull request string to remoteCache instance
 					cache.conn.Write(append([]byte(ppCacheOp.Key + "->-"), []byte("\rnr")...))
 				} else if len(ppCacheOp.Data) > 0 { // push operation
-				// sends push request string to remoteCache instance
+					// sends push request string to remoteCache instance
 					cache.conn.Write(append(append([]byte(ppCacheOp.Key + "-<-"), ppCacheOp.Data...), []byte("\rnr")...))
 				}
 			} else {
+				ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
 				cache.conn.Write(append([]byte(strconv.Itoa(ppCacheOp.QueueIndex) + "->i-"), []byte("\rnr")...))
 			}
 		// waits for possible reqplies to pull requests from remoteCache
