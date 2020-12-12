@@ -69,10 +69,15 @@ func (cache Cache) CacheHandler() {
 				}
 			} else {
 				found := false
+				reversedReqIndex := 0
 				// Iterate over cacheMap CacheVal which stores queue index
 				for _, data := range cache.cacheMap {
-					mappedReqIndex := len(cache.cacheMap) + (0 - len(cache.cacheMap)) * ((ppCacheOp.QueueIndex - 0) / (len(cache.cacheMap) - 0))
-					
+					if !ppCacheOp.QueueIndex > len(cache.cacheMap) {
+						reversedReqIndex = len(cache.cacheMap) - ppCacheOp.QueueIndex
+					} else {
+						reversedReqIndex = cache.cacheMap
+					}
+
 					fmt.Println(mappedReqIndex)
 					if data.QueueIndex == mappedReqIndex {
 						found = true
