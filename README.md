@@ -66,6 +66,18 @@ tlsClient, err := cacheClient.New("127.0.0.1", 8000, true, "test", rootCert)
 
 // writing to connected cache to key "remote" with val "test1"
 client.AddKeyVal("remote", []byte("test1"))
+
+i := 0
+for {
+  i++
+  // index 0 equals latest element pushed to the cache! 
+  fmt.Println("index "+strconv.Itoa(i) + ": " + string(client.GetIndexVal(i)))
+  time.Sleep(1 * time.Millisecond)
+  if i >= 100 {
+    break
+  }
+}
+
 ```
 
 ## Network communication protocol
