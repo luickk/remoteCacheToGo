@@ -18,6 +18,7 @@ type PushPullRequest struct {
 	Key string
 	QueueIndex int
 	ByIndex bool
+	IsCountRequest bool
 
 	ReturnPayload chan []byte
 	Data []byte
@@ -41,45 +42,58 @@ type CacheVal struct {
 var tcpConnBuffer = 2048
 
 // handles all requests to actual memory operations an the cache map
+// aka. pushPullRequestHandler
 func (cache Cache) CacheHandler() {
-	queueIndex := 0
+	queueIndex := 1
 	cache.CacheHandlerStarted = true
 	for {
 		select {
 		case ppCacheOp := <-cache.PushPullRequestCh:
-			// checking if data attribute contains
-			// if it doesn't no data needs to be pushed
-			if !ppCacheOp.ByIndex {
-				if len(ppCacheOp.Data) <= 0 { // pull operation
-					if _, ok := cache.cacheMap[ppCacheOp.Key]; ok {
-						ppCacheOp.ReturnPayload <- cache.cacheMap[ppCacheOp.Key].Data
-					} else {
+			if !ppCacheOp.IsCountRequest {
+				// checking if data attribute contains
+				// if it doesn't no data needs to be pushed
+				if !ppCacheOp.ByIndex {
+					if len(ppCacheOp.Data) <= 0 { // pull operation
+						if _, ok := cache.cacheMap[ppCacheOp.Key]; ok {
+							ppCacheOp.ReturnPayload <- cache.cacheMap[ppCacheOp.Key].Data
+						} else {
+							ppCacheOp.ReturnPayload <- []byte{}
+						}
+					// if it does, given data is written to key loc
+					} else if len(ppCacheOp.Data) > 0 { // push operation
+						val := new(CacheVal)
+						val.QueueIndex = queueIndex
+						val.Data = ppCacheOp.Data
+
+						cache.cacheMap[ppCacheOp.Key] = val
+
+						queueIndex++
+					}
+				} else {
+					found := false
+					reversedReqIndex := 0
+					// Iterate over cacheMap CacheVal which stores queue index
+					for _, data := range cache.cacheMap {
+						if !(ppCacheOp.QueueIndex > len(cache.cacheMap)) {
+							reversedReqIndex = len(cache.cacheMap) - ppCacheOp.QueueIndex
+						} else {
+							reversedReqIndex = len(cache.cacheMap)
+						}
+						if data.QueueIndex == reversedReqIndex {
+							found = true
+							ppCacheOp.ReturnPayload <- data.Data
+						}
+					}
+					if !found {
 						ppCacheOp.ReturnPayload <- []byte{}
 					}
-				// if it does, given data is written to key loc
-				} else if len(ppCacheOp.Data) > 0 { // push operation
-					val := new(CacheVal)
-					val.QueueIndex = queueIndex
-					val.Data = ppCacheOp.Data
-
-					fmt.Println(ppCacheOp.Key)
-					cache.cacheMap[ppCacheOp.Key] = val
-
-					queueIndex++
 				}
 			} else {
 				found := false
-				reversedReqIndex := 0
-				// Iterate over cacheMap CacheVal which stores queue index
 				for _, data := range cache.cacheMap {
-					if !(ppCacheOp.QueueIndex > len(cache.cacheMap)) {
-						reversedReqIndex = len(cache.cacheMap) - ppCacheOp.QueueIndex
-					} else {
-						reversedReqIndex = len(cache.cacheMap)
-					}
-					if data.QueueIndex == reversedReqIndex {
+					if data.QueueIndex ==  ppCacheOp.QueueIndex {
+						ppCacheOp.ReturnPayload <- []byte(strconv.Itoa(data.QueueIndex))
 						found = true
-						ppCacheOp.ReturnPayload <- data.Data
 					}
 				}
 				if !found {
@@ -138,18 +152,26 @@ func (cache Cache) RemoteConnHandler(port int) {
 								operation := string(dataDelimSplitByte[1])
 								payload := dataDelimSplitByte[2]
 								if operation == ">" { //pull by key
-									// reply to pull request from chacheClient by key
-									c.Write(append(append([]byte(key+"->-"), cache.GetKeyVal(key)...), []byte("\rnr")...))
+									// reply to pull-request from chacheClient by key
+									c.Write(append(append([]byte(key+"->-"), cache.GetValByKey(key)...), []byte("\rnr")...))
 								} else if operation == ">i" { //pull by index
 									index, err := strconv.Atoi(key)
 									if err != nil {
 										fmt.Println(err)
 									}
-									// reply to pull request from chacheClient by index
-									c.Write(append(append([]byte(key+"->i-"), cache.GetIndexVal(index)...), []byte("\rnr")...))
+									// reply to pull-request from chacheClient by index
+									c.Write(append(append([]byte(key+"->i-"), cache.GetValByIndex(index)...), []byte("\rnr")...))
+									fmt.Println(cache.GetCountByIndex(index))
+								}  else if operation == ">c" { //pull by index
+									index, err := strconv.Atoi(key)
+									if err != nil {
+										fmt.Println(err)
+									}
+									// reply to pull-request from chacheClient by index
+									c.Write(append(append([]byte(key+"->c-"), []byte(string(cache.GetCountByIndex(index)))...), []byte("\rnr")...))
 								} else if operation == "<" { // push
-									// writing push request from client to cache
-									cache.AddKeyVal(key, payload)
+									// writing push-request from client to cachefmt.Println(cache.GetCountByIndex(index))
+									cache.AddValByKey(key, payload)
 								}
 							} else {
 									fmt.Println("parsing error")
@@ -234,11 +256,11 @@ func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, dosProtection b
 									// if request operation is pull, the pull request is replied
 									if operation == ">" { //pull
 										// replying to pull request with requested data
-										c.Write(append(append([]byte(key+"->-"), cache.GetKeyVal(key)...), []byte("\rnr")...))
+										c.Write(append(append([]byte(key+"->-"), cache.GetValByKey(key)...), []byte("\rnr")...))
 										// executing push request
 									} else if operation == "<" { // push
 										// setting value for given key
-										cache.AddKeyVal(key, payload)
+										cache.AddValByKey(key, payload)
 									}
 								} else {
 									fmt.Println("parsing error")
@@ -253,7 +275,6 @@ func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, dosProtection b
 									fmt.Println("Authentification unsuccessful")
 									bruteForceTimer = true
 									timer := time.NewTimer(time.Second*time.Duration(bruteForceProtectionTime))
-
 									go func() {
 										<-timer.C
 										bruteForceTimer = false
@@ -283,7 +304,7 @@ func New() Cache {
 
 // adds key value to remote cache
 // (can also overwrite/ replace)
-func (cache Cache) AddKeyVal(key string, val []byte) bool {
+func (cache Cache) AddValByKey(key string, val []byte) bool {
 	// checking if inserting key data contains unallowed characters
   if util.CharacterWhiteList(key) {
 		// initiates push request
@@ -300,7 +321,7 @@ func (cache Cache) AddKeyVal(key string, val []byte) bool {
 }
 
 // creates pull request for the remoteCache instance
-func (cache Cache) GetKeyVal(key string) []byte {
+func (cache Cache) GetValByKey(key string) []byte {
 	// checking if inserting key data contains unallowed characters to block unnecessary request
   if util.CharacterWhiteList(key) {
 		// initiating pull request
@@ -329,7 +350,40 @@ func (cache Cache) GetKeyVal(key string) []byte {
 }
 
 // creates pull request for the remoteCache instance
-func (cache Cache) GetIndexVal(index int) []byte {
+func (cache Cache) GetCountByIndex(index int) int {
+	// initiating pull request
+	request := new(PushPullRequest)
+	request.QueueIndex = index
+	request.ByIndex = false
+	request.IsCountRequest = true
+
+	request.ReturnPayload = make(chan []byte)
+  cache.PushPullRequestCh <- request
+
+	reply := false
+	payload := []byte{}
+
+	// wainting for request to be processed and retrieval of payload
+	for !reply {
+		select {
+		case liveDataRes := <-request.ReturnPayload:
+			payload = liveDataRes
+			reply = true
+			break
+		}
+	}
+	request = nil
+
+	count, err := strconv.Atoi(string(payload))
+	if err != nil {
+		// queueindex begins at 1
+		return 0
+	}
+	return count
+}
+
+// creates pull request for the remoteCache instance
+func (cache Cache) GetValByIndex(index int) []byte {
 	// initiating pull request
 	request := new(PushPullRequest)
 	request.QueueIndex = index

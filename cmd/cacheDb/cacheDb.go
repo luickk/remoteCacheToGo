@@ -39,9 +39,9 @@ func (cacheDb CacheDb) CacheDbHandler(cacheDbOp chan *DbOp,  cacheOp chan *Cache
 			}
 		case cOp := <-cacheOp:
 			if cOp.Operation == "add" {
-				cacheDb.Db[cOp.CacheName].AddKeyVal(cOp.Key, cOp.Data)
+				cacheDb.Db[cOp.CacheName].AddValByKey(cOp.Key, cOp.Data)
 			} else if cOp.Operation == "get" {
-				cOp.ReturnPayload <- cacheDb.Db[cOp.CacheName].GetKeyVal(cOp.Key)
+				cOp.ReturnPayload <- cacheDb.Db[cOp.CacheName].GetValByKey(cOp.Key)
 			}
 		}
 	}
@@ -80,7 +80,7 @@ func (cacheDb CacheDb) RemoveCache(cacheName string) {
   }
 }
 
-func (cacheDb CacheDb) AddEntryToCache(cacheName string, key string, val []byte) bool {
+func (cacheDb CacheDb) AddValByKey(cacheName string, key string, val []byte) bool {
   if util.CharacterWhiteList(key) {
   	request := new(CachePushPullRequest)
   	request.Operation = "add"
@@ -96,7 +96,7 @@ func (cacheDb CacheDb) AddEntryToCache(cacheName string, key string, val []byte)
   return false
 }
 
-func (cacheDb CacheDb) GetEntryFromCache(cacheName string, key string) []byte {
+func (cacheDb CacheDb) GetValByKey(cacheName string, key string) []byte {
   if util.CharacterWhiteList(key) {
   	request := new(CachePushPullRequest)
   	request.Operation = "get"

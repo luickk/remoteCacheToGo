@@ -108,7 +108,7 @@ func main() {
   cDb.NewCache("remote")
 
   // adding new entry to cache "test" at key "testkey" with val "test1"
-  if cDb.AddEntryToCache("test", "testKey", []byte("test1")) {
+  if cDb.AddValByKey("test", "testKey", []byte("test1")) {
     fmt.Println("Written val to testKey")
   }
 
@@ -129,7 +129,7 @@ func concurrentTestInstanceA(cDb cacheDb.CacheDb) {
   i := 0
   for {
     i++
-    cDb.AddEntryToCache("test", "test"+strconv.Itoa(i), []byte("test"+strconv.Itoa(i)))
+    cDb.AddValByKey("test", "test"+strconv.Itoa(i), []byte("test"+strconv.Itoa(i)))
   }
 }
 
