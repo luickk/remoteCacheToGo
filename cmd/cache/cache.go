@@ -50,10 +50,12 @@ func (cache Cache) CacheHandler() {
 		select {
 		case ppCacheOp := <-cache.PushPullRequestCh:
 			if !ppCacheOp.IsCountRequest {
-				// checking if data attribute contains
-				// if it doesn't no data needs to be pushed
+				// is a request for the value by key
 				if !ppCacheOp.ByIndex {
+					// checking if data attribute contains any data
+					// if it doesn't no data needs to be pushed
 					if len(ppCacheOp.Data) <= 0 { // pull operation
+						// checking if cache-map contains key
 						if _, ok := cache.cacheMap[ppCacheOp.Key]; ok {
 							ppCacheOp.ReturnPayload <- cache.cacheMap[ppCacheOp.Key].Data
 						} else {
@@ -64,39 +66,56 @@ func (cache Cache) CacheHandler() {
 						val := new(CacheVal)
 						val.QueueIndex = queueIndex
 						val.Data = ppCacheOp.Data
-
 						cache.cacheMap[ppCacheOp.Key] = val
-
+						// increasing queueIndex (count)
 						queueIndex++
 					}
+				// is a request for the value by index
 				} else {
 					found := false
 					reversedReqIndex := 0
 					// Iterate over cacheMap CacheVal which stores queue index
 					for _, data := range cache.cacheMap {
 						if !(ppCacheOp.QueueIndex > len(cache.cacheMap)) {
+							// calculating reversed index
 							reversedReqIndex = len(cache.cacheMap) - ppCacheOp.QueueIndex
 						} else {
+							// setting reversed index to max len of cache-map
 							reversedReqIndex = len(cache.cacheMap)
 						}
 						if data.QueueIndex == reversedReqIndex {
 							found = true
+							// returning value at key to return channel
 							ppCacheOp.ReturnPayload <- data.Data
 						}
 					}
 					if !found {
+						// returning zero bytes if if there is no matching index
 						ppCacheOp.ReturnPayload <- []byte{}
 					}
 				}
+			// is a request for the count by index
 			} else {
 				found := false
+				reversedReqIndex := 0
 				for _, data := range cache.cacheMap {
-					if data.QueueIndex ==  ppCacheOp.QueueIndex {
+					// checking if request index is within the "index-space" of the cache-map
+					if !(ppCacheOp.QueueIndex > len(cache.cacheMap)) {
+						// calculating reversed index
+						reversedReqIndex = len(cache.cacheMap) - ppCacheOp.QueueIndex
+					} else {
+						// setting reversed index to min len of cache-map
+						reversedReqIndex = 1
+					}
+					// finding element with matching index
+					if data.QueueIndex == reversedReqIndex {
+						// returning value at index to return channel
 						ppCacheOp.ReturnPayload <- []byte(strconv.Itoa(data.QueueIndex))
 						found = true
 					}
 				}
 				if !found {
+					// returning zero bytes if if there is no matching index
 					ppCacheOp.ReturnPayload <- []byte{}
 				}
 			}
@@ -142,12 +161,13 @@ func (cache Cache) RemoteConnHandler(port int) {
 					fmt.Println(err)
 					return
 				}
-
+				// iterating over data seperated by delimiter
 				for _, data := range netDataSeperated {
 					if len(data) >= 1 {
 							// parsing protocol (you can find more about the protocol design in the README)
 							dataDelimSplitByte := bytes.SplitN(data, []byte("-"), 3)
 							if len(dataDelimSplitByte) >= 3 {
+								// protocol key (first element when seperated by "-" delim)
 								key := string(dataDelimSplitByte[0])
 								operation := string(dataDelimSplitByte[1])
 								payload := dataDelimSplitByte[2]
@@ -161,16 +181,15 @@ func (cache Cache) RemoteConnHandler(port int) {
 									}
 									// reply to pull-request from chacheClient by index
 									c.Write(append(append([]byte(key+"->i-"), cache.GetValByIndex(index)...), []byte("\rnr")...))
-									fmt.Println(cache.GetCountByIndex(index))
 								}  else if operation == ">c" { //pull by index
 									index, err := strconv.Atoi(key)
 									if err != nil {
 										fmt.Println(err)
 									}
 									// reply to pull-request from chacheClient by index
-									c.Write(append(append([]byte(key+"->c-"), []byte(string(cache.GetCountByIndex(index)))...), []byte("\rnr")...))
+									c.Write(append(append([]byte(key+"->c-"), []byte(strconv.Itoa(cache.GetCountByIndex(index)))...), []byte("\rnr")...))
 								} else if operation == "<" { // push
-									// writing push-request from client to cachefmt.Println(cache.GetCountByIndex(index))
+									// writing push-request from client to cache
 									cache.AddValByKey(key, payload)
 								}
 							} else {
@@ -184,8 +203,8 @@ func (cache Cache) RemoteConnHandler(port int) {
 }
 
 // provides network interface for given cache
-// provide TLS encryption and password authentication
-// provide valid and signed public/ private key pair and password hash to validate against
+// provides TLS encryption and password authentication
+// provides valid and signed public/ private key pair and password hash to validate against
 // parameters: port, password Hash (please don't use unhashed pw strings), dosProtection enables delay between reconnects by ip, server Certificate, private Key
 func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, dosProtection bool, serverCert string, serverKey string) {
 	// initiating provided key pair
@@ -227,14 +246,17 @@ func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, dosProtection b
 				var authenticated = false
 				// limits authentification tries
 				var bruteForceTimer = false
+				// time each client has to wait before next reconnect
 				var bruteForceProtectionTime = 1
 				for {
+					// data buffer
 					data := make([]byte, tcpConnBuffer)
 					n, err := bufio.NewReader(c).Read(data)
 					if err != nil {
 						fmt.Println(err)
 						return
 					}
+					// extracting data read by reader from buffer
 					data = data[:n]
 
 					// splitting data to prevent overflow confusion
@@ -244,12 +266,15 @@ func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, dosProtection b
 						return
 					}
 
+					// splitting data to prevent buffer overflow confusion
 					for _, data := range netDataSeperated {
 						if len(data) >= 1 {
+							// checking if client has authenticated
 							if authenticated {
 								// parsing protocol (you can find more about the protocol design in the README)
 								dataDelimSplitByte := bytes.SplitN(data, []byte("-"), 3)
 								if len(dataDelimSplitByte) >= 3 {
+									// protocol key (first element when seperated by "-" delim)
 									key := string(dataDelimSplitByte[0])
 									operation := string(dataDelimSplitByte[1])
 									payload := dataDelimSplitByte[2]
@@ -266,14 +291,18 @@ func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, dosProtection b
 									fmt.Println("parsing error")
 								}
 							} else {
+								// checking if password is valid and if the bruteForceTimer is finished
 								if string(data) == pwHash  && !bruteForceTimer {
 									fmt.Println("Authentification successful")
 									authenticated = true
+								// bruteForceTimer has not finished yet
 								} else if bruteForceTimer {
 									fmt.Println("Client tried to authenticate in brute force protection time")
+								// password was invalid
 								} else {
 									fmt.Println("Authentification unsuccessful")
 									bruteForceTimer = true
+									// resetting timer
 									timer := time.NewTimer(time.Second*time.Duration(bruteForceProtectionTime))
 									go func() {
 										<-timer.C
@@ -311,7 +340,7 @@ func (cache Cache) AddValByKey(key string, val []byte) bool {
 		request := new(PushPullRequest)
 		request.Key = key
 		request.Data = val
-
+		// pushing request to pushPull handler
 	  cache.PushPullRequestCh <- request
 
 		request = nil
@@ -334,7 +363,7 @@ func (cache Cache) GetValByKey(key string) []byte {
 		reply := false
 		payload := []byte{}
 
-		// wainting for request to be processed and retrieval of payload
+		// waiting for request to be processed and retrieval of payload
 		for !reply {
 			select {
 			case liveDataRes := <-request.ReturnPayload:
@@ -363,7 +392,7 @@ func (cache Cache) GetCountByIndex(index int) int {
 	reply := false
 	payload := []byte{}
 
-	// wainting for request to be processed and retrieval of payload
+	// waiting for request to be processed and retrieval of payload
 	for !reply {
 		select {
 		case liveDataRes := <-request.ReturnPayload:
@@ -373,12 +402,18 @@ func (cache Cache) GetCountByIndex(index int) int {
 		}
 	}
 	request = nil
-
-	count, err := strconv.Atoi(string(payload))
-	if err != nil {
-		// queueindex begins at 1
+	var count int
+	var err error
+	if len(payload) != 0 {
+		count, err = strconv.Atoi(string(payload))
+		if err != nil {
+			// queueindex begins at 1
+			fmt.Println(err)
+		}
+	} else {
 		return 0
 	}
+
 	return count
 }
 
@@ -394,7 +429,7 @@ func (cache Cache) GetValByIndex(index int) []byte {
 	reply := false
 	payload := []byte{}
 
-	// wainting for request to be processed and retrieval of payload
+	// waiting for request to be processed and retrieval of payload
 	for !reply {
 		select {
 		case liveDataRes := <-request.ReturnPayload:

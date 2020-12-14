@@ -169,6 +169,7 @@ func (cache RemoteCache) pushPullRequestHandler() {
 					if cacheReply.Key == req.Key  && !req.Processed {
 						// fullfills pull-requests data return
 						req.ReturnPayload <- cacheReply.Data
+						req.Processed = true
 					} else if !req.Processed {
 						// if request is not answered immeadiatly, request is forgotten
 						req.Processed = true
@@ -178,6 +179,7 @@ func (cache RemoteCache) pushPullRequestHandler() {
 					if cacheReply.QueueIndex == req.QueueIndex  && !req.Processed {
 						// fullfills pull-requests data return
 						req.ReturnPayload <- cacheReply.Data
+						req.Processed = true
 					} else if !req.Processed {
 						// if request is not answered immeadiatly, request is forgotten
 						req.Processed = true
@@ -187,6 +189,7 @@ func (cache RemoteCache) pushPullRequestHandler() {
 					if cacheReply.QueueIndex == req.QueueIndex  && !req.Processed {
 						// fullfills pull-requests data return
 						req.ReturnPayload <- cacheReply.Data
+						req.Processed = true
 					} else if !req.Processed {
 						// if request is not answered immeadiatly, request is forgotten
 						req.Processed = true
@@ -279,7 +282,7 @@ func (cache RemoteCache) GetCountByIndex(index int) int {
 	reply := false
 	payload := []byte{}
 
-	// wainting for request to be processed and retrieval of payload
+	// waiting for request to be processed and retrieval of payload
 	for !reply {
 		select {
 		case liveDataRes := <-request.ReturnPayload:
@@ -309,7 +312,7 @@ func (cache RemoteCache) GetValByIndex(index int) []byte {
 	reply := false
 	payload := []byte{}
 
-	// wainting for request to be processed and retrieval of payload
+	// waiting for request to be processed and retrieval of payload
 	for !reply {
 		select {
 		case liveDataRes := <-request.ReturnPayload:

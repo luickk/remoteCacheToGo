@@ -35,12 +35,12 @@ cDb.NewCache("test")
 cDb.NewCache("remote")
 
 // adding new entry to cache "test" at key "testkey" with val "test1"
-if cDb.AddEntryToCache("test", "testKey", []byte("test1")) {
+if cDb.AddValByKey("test", "testKey", []byte("test1")) {
   fmt.Println("Written val to testKey")
 }
 
 // pulling data from cache "test" at key "testKey"
-fmt.Println("Requestd key: " + string(cDb.GetEntryFromCache("test", "testKey")))
+fmt.Println("Requestd key: " + string(cDb.GetValByKey("test", "testKey")))
 
 // creating encrypted network interface for cache with name "remote" and the password hash "test" and enabled dosProtection
 // serverCert & Key are passed hardcoded only for testing purposes
@@ -65,13 +65,13 @@ if err != nil {
 tlsClient, err := cacheClient.New("127.0.0.1", 8000, true, "test", rootCert)
 
 // writing to connected cache to key "remote" with val "test1"
-client.AddKeyVal("remote", []byte("test1"))
+client.AddValByKey("remote", []byte("test1"))
 
 i := 0
 for {
   i++
-  // index 0 equals latest element pushed to the cache! 
-  fmt.Println("index "+strconv.Itoa(i) + ": " + string(client.GetIndexVal(i)))
+  // index 0 equals latest element pushed to the cache!
+  fmt.Println("index "+strconv.Itoa(i) + ": " + string(client.GetValByIndex(i)))
   time.Sleep(1 * time.Millisecond)
   if i >= 100 {
     break
