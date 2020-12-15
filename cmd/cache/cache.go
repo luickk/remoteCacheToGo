@@ -9,6 +9,7 @@ import (
 	"time"
 	"strings"
 	"crypto/tls"
+	
   "remoteCacheToGo/pkg/util"
   "remoteCacheToGo/pkg/goDosProtection"
 )
@@ -27,7 +28,7 @@ type PushPullRequest struct {
 // stores all important data for cache
 type Cache struct {
 	// actual cache holding all data in single cache
-	cacheMap map[string]*CacheVal
+	cacheMem map[string]*CacheVal
 	PushPullRequestCh chan *PushPullRequest
 	CacheHandlerStarted bool
 }
@@ -56,8 +57,8 @@ func (cache Cache) CacheHandler() {
 					// if it doesn't no data needs to be pushed
 					if len(ppCacheOp.Data) <= 0 { // pull operation
 						// checking if cache-map contains key
-						if _, ok := cache.cacheMap[ppCacheOp.Key]; ok {
-							ppCacheOp.ReturnPayload <- cache.cacheMap[ppCacheOp.Key].Data
+						if _, ok := cache.cacheMem[ppCacheOp.Key]; ok {
+							ppCacheOp.ReturnPayload <- cache.cacheMem[ppCacheOp.Key].Data
 						} else {
 							ppCacheOp.ReturnPayload <- []byte{}
 						}
@@ -66,7 +67,7 @@ func (cache Cache) CacheHandler() {
 						val := new(CacheVal)
 						val.QueueIndex = queueIndex
 						val.Data = ppCacheOp.Data
-						cache.cacheMap[ppCacheOp.Key] = val
+						cache.cacheMem[ppCacheOp.Key] = val
 						// increasing queueIndex (count)
 						queueIndex++
 					}
@@ -74,14 +75,14 @@ func (cache Cache) CacheHandler() {
 				} else {
 					found := false
 					reversedReqIndex := 0
-					// Iterate over cacheMap CacheVal which stores queue index
-					for _, data := range cache.cacheMap {
-						if !(ppCacheOp.QueueIndex > len(cache.cacheMap)) {
+					// Iterate over cacheMem CacheVal which stores queue index
+					for _, data := range cache.cacheMem {
+						if !(ppCacheOp.QueueIndex > len(cache.cacheMem)) {
 							// calculating reversed index
-							reversedReqIndex = len(cache.cacheMap) - ppCacheOp.QueueIndex
+							reversedReqIndex = len(cache.cacheMem) - ppCacheOp.QueueIndex
 						} else {
 							// setting reversed index to max len of cache-map
-							reversedReqIndex = len(cache.cacheMap)
+							reversedReqIndex = len(cache.cacheMem)
 						}
 						if data.QueueIndex == reversedReqIndex {
 							found = true
@@ -98,11 +99,11 @@ func (cache Cache) CacheHandler() {
 			} else {
 				found := false
 				reversedReqIndex := 0
-				for _, data := range cache.cacheMap {
+				for _, data := range cache.cacheMem {
 					// checking if request index is within the "index-space" of the cache-map
-					if !(ppCacheOp.QueueIndex > len(cache.cacheMap)) {
+					if !(ppCacheOp.QueueIndex > len(cache.cacheMem)) {
 						// calculating reversed index
-						reversedReqIndex = len(cache.cacheMap) - ppCacheOp.QueueIndex
+						reversedReqIndex = len(cache.cacheMem) - ppCacheOp.QueueIndex
 					} else {
 						// setting reversed index to min len of cache-map
 						reversedReqIndex = 1
