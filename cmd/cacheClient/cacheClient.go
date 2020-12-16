@@ -2,7 +2,6 @@ package cacheClient
 
 import (
 	"net"
-	"fmt"
 	"strconv"
 	"bytes"
 	"bufio"
@@ -63,7 +62,7 @@ func connectToTlsRemoteHandler(address string, port int, pwHash string, rootCert
 	roots := x509.NewCertPool()
 	ok := roots.AppendCertsFromPEM([]byte(rootCert))
 	if !ok {
-		WarningLogger.Println("failed to parse root certificate")
+		ErrorLogger.Println("Failed to parse root certificate")
 	}
 	// initing conifiguration for TLS connection
 	config := &tls.Config{RootCAs: roots}
@@ -71,7 +70,7 @@ func connectToTlsRemoteHandler(address string, port int, pwHash string, rootCert
 	// dial encrypted tls connection
 	c, err := tls.Dial("tcp", address+":"+strconv.Itoa(port), config)
 	if err != nil {
-		fmt.Println(err)
+		ErrorLogger.Println(err)
     return false, c
 	}
 	// sending password hash in order to authenticate
@@ -205,7 +204,7 @@ func (cache RemoteCache) pushPullRequestHandler() {
 						// fullfills pull-requests data return
 						req.ReturnPayload <- cacheReply.Data
 						req.Processed = true
-						
+
 					} else if !req.Processed {
 						// if request is not answered immeadiatly, request is forgotten
 						req.Processed = true
@@ -233,6 +232,8 @@ func (cache RemoteCache) pushPullRequestHandler() {
 						req.Processed = true
 					}
 				}
+				// removing all ppOp from ppCacheOpBuffer if processed
+				ppCacheOpBuffer = removeOperation(ppCacheOpBuffer, util.Index(len(ppCacheOpBuffer), func(i int) bool { return ppCacheOpBuffer[i].Processed }))
 			}
 		}
 	}
@@ -245,6 +246,7 @@ func New(address string, port int, tls bool, pwHash string, rootCert string) (Re
 	var connected bool
 	var conn net.Conn
 
+	// initiating different logger
 	InfoLogger = log.New(os.Stdout, "[NODE] INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
 	WarningLogger = log.New(os.Stdout, "[NODE] WARNING: ", log.Ldate|log.Ltime|log.Lshortfile)
 	ErrorLogger = log.New(os.Stdout, "[NODE] ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
@@ -341,7 +343,7 @@ func (cache RemoteCache) GetCountByIndex(index int) int {
 	// converting payload to string to int (payload = count)
 	count, err := strconv.Atoi(string(payload))
 	if err != nil {
-		fmt.Println(err)
+		WarningLogger.Println(err)
 	}
 	return count
 }
@@ -370,4 +372,12 @@ func (cache RemoteCache) GetValByIndex(index int) []byte {
 	}
 	request = nil
 	return payload
+}
+
+// ppOp slice operation
+// only use if order is not of importance
+func removeOperation(s []*PushPullRequest, i int) []*PushPullRequest {
+    s[i] = s[len(s)-1]
+    // We do not need to put s[i] at the end, as it will be discarded anyway
+    return s[:len(s)-1]
 }

@@ -2,14 +2,15 @@ package cache
 
 import (
 	"net"
-	"fmt"
+	"log"
 	"bufio"
 	"bytes"
 	"strconv"
 	"time"
 	"strings"
 	"crypto/tls"
-	
+	"os"
+
   "remoteCacheToGo/pkg/util"
   "remoteCacheToGo/pkg/goDosProtection"
 )
@@ -27,7 +28,7 @@ type PushPullRequest struct {
 
 // stores all important data for cache
 type Cache struct {
-	// actual cache holding all data in single cache
+	// actual cache, holding all the data in memory
 	cacheMem map[string]*CacheVal
 	PushPullRequestCh chan *PushPullRequest
 	CacheHandlerStarted bool
@@ -42,10 +43,17 @@ type CacheVal struct {
 // tcpConnBuffer defines the buffer size of the TCP conn reader
 var tcpConnBuffer = 2048
 
+// defining different levels of loggers
+var (
+    WarningLogger *log.Logger
+    InfoLogger    *log.Logger
+    ErrorLogger   *log.Logger
+)
+
 // handles all requests to actual memory operations an the cache map
 // aka. pushPullRequestHandler
 func (cache Cache) CacheHandler() {
-	queueIndex := 1
+	var queueIndex int = 1
 	cache.CacheHandlerStarted = true
 	for {
 		select {
@@ -73,8 +81,8 @@ func (cache Cache) CacheHandler() {
 					}
 				// is a request for the value by index
 				} else {
-					found := false
-					reversedReqIndex := 0
+					var found bool
+					var reversedReqIndex int
 					// Iterate over cacheMem CacheVal which stores queue index
 					for _, data := range cache.cacheMem {
 						if !(ppCacheOp.QueueIndex > len(cache.cacheMem)) {
@@ -97,8 +105,8 @@ func (cache Cache) CacheHandler() {
 				}
 			// is a request for the count by index
 			} else {
-				found := false
-				reversedReqIndex := 0
+				var found bool
+				var reversedReqIndex int
 				for _, data := range cache.cacheMem {
 					// checking if request index is within the "index-space" of the cache-map
 					if !(ppCacheOp.QueueIndex > len(cache.cacheMem)) {
@@ -129,7 +137,7 @@ func (cache Cache) RemoteConnHandler(port int) {
 	// opening tcp server
 	l, err := net.Listen("tcp4", "127.0.0.1:"+strconv.Itoa(port))
 	if err != nil {
-		fmt.Println(err)
+		ErrorLogger.Println(err)
 		return
 	}
 	defer l.Close()
@@ -138,7 +146,7 @@ func (cache Cache) RemoteConnHandler(port int) {
 		// waiting for client to connect
 		c, err := l.Accept()
 		if err != nil {
-			fmt.Println(err)
+			ErrorLogger.Println(err)
 			return
 		}
 
@@ -146,46 +154,50 @@ func (cache Cache) RemoteConnHandler(port int) {
 		// parses all incoming data
 		// hanles all operations on connection object
 		go func(c net.Conn, cache Cache) {
-			fmt.Printf("New client connected to %s \n", c.RemoteAddr().String())
+			InfoLogger.Printf("New client connected to %s \n", c.RemoteAddr().String())
 			for {
-				data := make([]byte, tcpConnBuffer)
-				n, err := bufio.NewReader(c).Read(data)
+				netData := make([]byte, tcpConnBuffer)
+				n, err := bufio.NewReader(c).Read(netData)
 				if err != nil {
-					fmt.Println(err)
+					ErrorLogger.Println(err)
 					return
 				}
-				data = data[:n]
+				netData = netData[:n]
 
 				// splitting data to prevent buffer overflow confusion
-				netDataSeperated := bytes.Split(data, []byte("\rnr"))
+				netDataSeperated := bytes.Split(netData, []byte("\rnr"))
 				if err != nil {
-					fmt.Println(err)
+					WarningLogger.Println(err)
 					return
 				}
+				var dataDelimSplitByte [][]byte
+				var key string
+				var operation string
+				var payload []byte
 				// iterating over data seperated by delimiter
 				for _, data := range netDataSeperated {
 					if len(data) >= 1 {
 							// parsing protocol (you can find more about the protocol design in the README)
-							dataDelimSplitByte := bytes.SplitN(data, []byte("-"), 3)
+							dataDelimSplitByte = bytes.SplitN(data, []byte("-"), 3)
 							if len(dataDelimSplitByte) >= 3 {
 								// protocol key (first element when seperated by "-" delim)
-								key := string(dataDelimSplitByte[0])
-								operation := string(dataDelimSplitByte[1])
-								payload := dataDelimSplitByte[2]
+								key = string(dataDelimSplitByte[0])
+								operation = string(dataDelimSplitByte[1])
+								payload = dataDelimSplitByte[2]
 								if operation == ">" { //pull by key
 									// reply to pull-request from chacheClient by key
 									c.Write(append(append([]byte(key+"->-"), cache.GetValByKey(key)...), []byte("\rnr")...))
 								} else if operation == ">i" { //pull by index
 									index, err := strconv.Atoi(key)
 									if err != nil {
-										fmt.Println(err)
+										WarningLogger.Println(err)
 									}
 									// reply to pull-request from chacheClient by index
 									c.Write(append(append([]byte(key+"->i-"), cache.GetValByIndex(index)...), []byte("\rnr")...))
 								}  else if operation == ">c" { //pull by index
 									index, err := strconv.Atoi(key)
 									if err != nil {
-										fmt.Println(err)
+										WarningLogger.Println(err)
 									}
 									// reply to pull-request from chacheClient by index
 									c.Write(append(append([]byte(key+"->c-"), []byte(strconv.Itoa(cache.GetCountByIndex(index)))...), []byte("\rnr")...))
@@ -194,7 +206,7 @@ func (cache Cache) RemoteConnHandler(port int) {
 									cache.AddValByKey(key, payload)
 								}
 							} else {
-									fmt.Println("parsing error")
+									WarningLogger.Println("Parsing Error")
 							}
 						}
 					}
@@ -211,7 +223,7 @@ func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, dosProtection b
 	// initiating provided key pair
 	cer, err := tls.X509KeyPair([]byte(serverCert), []byte(serverKey))
 	if err != nil {
-		fmt.Println(err)
+		ErrorLogger.Println(err)
 	}
 
 	// initiating DOS protection with 10 second reconnection delay
@@ -223,47 +235,52 @@ func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, dosProtection b
 	// listening for clients who want to connect
 	l, err := tls.Listen("tcp", "127.0.0.1:"+strconv.Itoa(port), config)
 	if err != nil {
-		fmt.Println(err)
+		ErrorLogger.Println(err)
 	}
 	defer l.Close()
 
 	for {
 		c, err := l.Accept()
 		if err != nil {
-			fmt.Println(err)
+			ErrorLogger.Println(err)
 			return
 		}
 
 		// client is not banned
 		if !dosProt.Client(strings.Split(c.RemoteAddr().String(), ":")[0]) || !dosProtection {
-		  fmt.Println("Accepted client connection")
+		  InfoLogger.Println("Accepted client connection")
 
 			// connection listener waits for incoming data
 			// incoming data is parsed and possible request answers are pushed to back to the CacheHandler
 			go func(c net.Conn, cache Cache) {
-				fmt.Println("New client connected to %s \n", c.RemoteAddr().String())
-				fmt.Println("waiting for authentication")
+				InfoLogger.Println("New client connected to %s \n", c.RemoteAddr().String())
+				InfoLogger.Println("waiting for authentication")
 				// true if client sent correct password hash
 				var authenticated = false
 				// limits authentification tries
 				var bruteForceTimer = false
 				// time each client has to wait before next reconnect
 				var bruteForceProtectionTime = 1
+
+				var dataDelimSplitByte [][]byte
+				var key string
+				var operation string
+				var payload []byte
 				for {
 					// data buffer
-					data := make([]byte, tcpConnBuffer)
-					n, err := bufio.NewReader(c).Read(data)
+					netData := make([]byte, tcpConnBuffer)
+					n, err := bufio.NewReader(c).Read(netData)
 					if err != nil {
-						fmt.Println(err)
+						ErrorLogger.Println(err)
 						return
 					}
 					// extracting data read by reader from buffer
-					data = data[:n]
+					netData = netData[:n]
 
 					// splitting data to prevent overflow confusion
-					netDataSeperated := bytes.Split(data, []byte("\rnr"))
+					netDataSeperated := bytes.Split(netData, []byte("\rnr"))
 					if err != nil {
-						fmt.Println(err)
+						WarningLogger.Println(err)
 						return
 					}
 
@@ -273,12 +290,12 @@ func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, dosProtection b
 							// checking if client has authenticated
 							if authenticated {
 								// parsing protocol (you can find more about the protocol design in the README)
-								dataDelimSplitByte := bytes.SplitN(data, []byte("-"), 3)
+								dataDelimSplitByte = bytes.SplitN(data, []byte("-"), 3)
 								if len(dataDelimSplitByte) >= 3 {
 									// protocol key (first element when seperated by "-" delim)
-									key := string(dataDelimSplitByte[0])
-									operation := string(dataDelimSplitByte[1])
-									payload := dataDelimSplitByte[2]
+									key = string(dataDelimSplitByte[0])
+									operation = string(dataDelimSplitByte[1])
+									payload = dataDelimSplitByte[2]
 									// if request operation is pull, the pull request is replied
 									if operation == ">" { //pull
 										// replying to pull request with requested data
@@ -289,19 +306,19 @@ func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, dosProtection b
 										cache.AddValByKey(key, payload)
 									}
 								} else {
-									fmt.Println("parsing error")
+									WarningLogger.Println("Parsing error")
 								}
 							} else {
 								// checking if password is valid and if the bruteForceTimer is finished
 								if string(data) == pwHash  && !bruteForceTimer {
-									fmt.Println("Authentification successful")
+									InfoLogger.Println("Authentification successful")
 									authenticated = true
 								// bruteForceTimer has not finished yet
 								} else if bruteForceTimer {
-									fmt.Println("Client tried to authenticate in brute force protection time")
+									InfoLogger.Println("Client tried to authenticate in brute force protection time")
 								// password was invalid
 								} else {
-									fmt.Println("Authentification unsuccessful")
+									InfoLogger.Println("Authentification unsuccessful")
 									bruteForceTimer = true
 									// resetting timer
 									timer := time.NewTimer(time.Second*time.Duration(bruteForceProtectionTime))
@@ -317,15 +334,23 @@ func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, dosProtection b
 			}(c, cache)
 		// client is banned
 		} else {
-		 fmt.Println("Refused client connection")
+		 InfoLogger.Println("Refused client connection")
 		}
 	}
 }
 
 // initiating new cache struct
 func New() Cache {
-  cache := Cache{make(map[string]*CacheVal), make(chan *PushPullRequest), false}
+	// initiating cache struct
+  cache := Cache{ make(map[string]*CacheVal), make(chan *PushPullRequest), false }
+	// updating cacheHandler state
 	cache.CacheHandlerStarted = false
+
+	// initiating different logger
+	InfoLogger = log.New(os.Stdout, "[NODE] INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
+	WarningLogger = log.New(os.Stdout, "[NODE] WARNING: ", log.Ldate|log.Ltime|log.Lshortfile)
+	ErrorLogger = log.New(os.Stdout, "[NODE] ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+
 	// starting cache handler to allow for concurrent memory(cache map) operations
 	go cache.CacheHandler()
   return cache
@@ -409,7 +434,7 @@ func (cache Cache) GetCountByIndex(index int) int {
 		count, err = strconv.Atoi(string(payload))
 		if err != nil {
 			// queueindex begins at 1
-			fmt.Println(err)
+			WarningLogger.Println(err)
 		}
 	} else {
 		return 0
