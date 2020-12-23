@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"time"
 	"strings"
-	"fmt"
 	"crypto/tls"
 	"os"
 
@@ -20,9 +19,7 @@ import (
 type PushPullRequest struct {
 	Key string
 	QueueIndex int
-	ByIndex bool
-	ByIndexKey bool
-	IsCountRequest bool
+	Operation string
 
 	ReturnPayload chan []byte
 	Data []byte
@@ -60,75 +57,71 @@ func (cache Cache) CacheHandler() {
 	for {
 		select {
 		case ppCacheOp := <-cache.PushPullRequestCh:
-			if !ppCacheOp.IsCountRequest {
-				// is a request for the value by key
-				if !ppCacheOp.ByIndex && !ppCacheOp.ByIndexKey {
-					// checking if data attribute contains any data
-					// if it doesn't no data needs to be pushed
-					if len(ppCacheOp.Data) <= 0 { // pull operation
-						// checking if cache-map contains key
-						if _, ok := cache.cacheMem[ppCacheOp.Key]; ok {
-							ppCacheOp.ReturnPayload <- cache.cacheMem[ppCacheOp.Key].Data
-						} else {
-							ppCacheOp.ReturnPayload <- []byte{}
-						}
-					// if it does, given data is written to key loc
-					} else if len(ppCacheOp.Data) > 0 { // push operation
-						val := new(CacheVal)
-						val.QueueIndex = queueIndex
-						val.Data = ppCacheOp.Data
-						cache.cacheMem[ppCacheOp.Key] = val
-						// increasing queueIndex (count)
-						queueIndex++
-					}
-				// is a request for the value by index
-				} else if ppCacheOp.ByIndex  {
-					var found bool
-					var reversedReqIndex int
-					// Iterate over cacheMem CacheVal which stores queue index
-					for _, data := range cache.cacheMem {
-						if !(ppCacheOp.QueueIndex > len(cache.cacheMem)) {
-							// calculating reversed index
-							reversedReqIndex = len(cache.cacheMem) - ppCacheOp.QueueIndex
-						} else {
-							// setting reversed index to max len of cache-map
-							reversedReqIndex = len(cache.cacheMem)
-						}
-						if data.QueueIndex == reversedReqIndex {
-							found = true
-							// returning value at key to return channel
-							ppCacheOp.ReturnPayload <- data.Data
-						}
-					}
-					if !found {
-						// returning zero bytes if if there is no matching index
+			switch ppCacheOp.Operation {
+			case ">":
+				// checking if data attribute contains any data
+				// if it doesn't no data needs to be pushed
+				if len(ppCacheOp.Data) <= 0 { // pull operation
+					// checking if cache-map contains key
+					if _, ok := cache.cacheMem[ppCacheOp.Key]; ok {
+						ppCacheOp.ReturnPayload <- cache.cacheMem[ppCacheOp.Key].Data
+					} else {
 						ppCacheOp.ReturnPayload <- []byte{}
 					}
-				} else if ppCacheOp.ByIndexKey  {
-					var found bool
-					var reversedReqIndex int
-					// Iterate over cacheMem CacheVal which stores queue index
-					for key, data := range cache.cacheMem {
-						if !(ppCacheOp.QueueIndex > len(cache.cacheMem)) {
-							// calculating reversed index
-							reversedReqIndex = len(cache.cacheMem) - ppCacheOp.QueueIndex
-						} else {
-							// setting reversed index to max len of cache-map
-							reversedReqIndex = len(cache.cacheMem)
-						}
-						if data.QueueIndex == reversedReqIndex {
-							found = true
-							// returning value at key to return channel
-							ppCacheOp.ReturnPayload <- []byte(key)
-						}
+				// if it does, given data is written to key loc
+				} else if len(ppCacheOp.Data) > 0 { // push operation
+					val := new(CacheVal)
+					val.QueueIndex = queueIndex
+					val.Data = ppCacheOp.Data
+					cache.cacheMem[ppCacheOp.Key] = val
+					// increasing queueIndex (count)
+					queueIndex++
+				}
+			case ">i":
+				var found bool
+				var reversedReqIndex int
+				// Iterate over cacheMem CacheVal which stores queue index
+				for _, data := range cache.cacheMem {
+					if !(ppCacheOp.QueueIndex > len(cache.cacheMem)) {
+						// calculating reversed index
+						reversedReqIndex = len(cache.cacheMem) - ppCacheOp.QueueIndex
+					} else {
+						// setting reversed index to max len of cache-map
+						reversedReqIndex = len(cache.cacheMem)
 					}
-					if !found {
-						// returning zero bytes if if there is no matching index
-						ppCacheOp.ReturnPayload <- []byte{}
+					if data.QueueIndex == reversedReqIndex {
+						found = true
+						// returning value at key to return channel
+						ppCacheOp.ReturnPayload <- data.Data
 					}
 				}
-			// is a request for the count by index
-			} else {
+				if !found {
+					// returning zero bytes if if there is no matching index
+					ppCacheOp.ReturnPayload <- []byte{}
+				}
+			case ">ik":
+				var found bool
+				var reversedReqIndex int
+				// Iterate over cacheMem CacheVal which stores queue index
+				for key, data := range cache.cacheMem {
+					if !(ppCacheOp.QueueIndex > len(cache.cacheMem)) {
+						// calculating reversed index
+						reversedReqIndex = len(cache.cacheMem) - ppCacheOp.QueueIndex
+					} else {
+						// setting reversed index to max len of cache-map
+						reversedReqIndex = len(cache.cacheMem)
+					}
+					if data.QueueIndex == reversedReqIndex {
+						found = true
+						// returning value at key to return channel
+						ppCacheOp.ReturnPayload <- []byte(key)
+					}
+				}
+				if !found {
+					// returning zero bytes if if there is no matching index
+					ppCacheOp.ReturnPayload <- []byte{}
+				}
+			case ">c":
 				var found bool
 				var reversedReqIndex int
 				for _, data := range cache.cacheMem {
@@ -208,37 +201,37 @@ func (cache Cache) RemoteConnHandler(port int) {
 								key = string(dataDelimSplitByte[0])
 								operation = string(dataDelimSplitByte[1])
 								payload = dataDelimSplitByte[2]
-								if operation == ">" { //pull by key
+								switch operation {
+								case ">":
 									// reply to pull-request from chacheClient by key
 									c.Write(append(append([]byte(key+"->-"), cache.GetValByKey(key)...), []byte("\rnr")...))
-								} else if operation == ">i" { //pull by index
+								case ">i":
 									index, err := strconv.Atoi(key)
 									if err != nil {
 										WarningLogger.Println(err)
 									}
 									// reply to pull-request from chacheClient by index
 									c.Write(append(append([]byte(key+"->i-"), cache.GetValByIndex(index)...), []byte("\rnr")...))
-								} else if operation == ">ik" { //pull by index
+								case ">ik":
 									index, err := strconv.Atoi(key)
 									if err != nil {
 										WarningLogger.Println(err)
 									}
-									fmt.Println(cache.GetKeyByIndex(index))
 									// reply to pull-request from chacheClient by index
 									c.Write(append(append([]byte(key+"->ik-"), []byte(cache.GetKeyByIndex(index))...), []byte("\rnr")...))
-								} else if operation == ">c" { //pull by index
+								case ">c":
 									index, err := strconv.Atoi(key)
 									if err != nil {
 										WarningLogger.Println(err)
 									}
 									// reply to pull-request from chacheClient by index
 									c.Write(append(append([]byte(key+"->c-"), []byte(strconv.Itoa(cache.GetCountByIndex(index)))...), []byte("\rnr")...))
-								} else if operation == "<" { // push
+								case "<":
 									// writing push-request from client to cache
 									cache.AddValByKey(key, payload)
+								default:
+										WarningLogger.Println("Parsing Error")
 								}
-							} else {
-									WarningLogger.Println("Parsing Error")
 							}
 						}
 					}
@@ -398,6 +391,7 @@ func (cache Cache) AddValByKey(key string, val []byte) bool {
 		request := new(PushPullRequest)
 		request.Key = key
 		request.Data = val
+		request.Operation = ">"
 		// pushing request to pushPull handler
 	  cache.PushPullRequestCh <- request
 
@@ -415,7 +409,7 @@ func (cache Cache) GetValByKey(key string) []byte {
 		request := new(PushPullRequest)
 		request.Key = key
 		request.ReturnPayload = make(chan []byte)
-		request.ByIndex = false
+		request.Operation = ">"
 	  cache.PushPullRequestCh <- request
 
 		reply := false
@@ -441,8 +435,7 @@ func (cache Cache) GetCountByIndex(index int) int {
 	// initiating pull request
 	request := new(PushPullRequest)
 	request.QueueIndex = index
-	request.ByIndex = false
-	request.IsCountRequest = true
+	request.Operation = ">c"
 
 	request.ReturnPayload = make(chan []byte)
   cache.PushPullRequestCh <- request
@@ -480,7 +473,7 @@ func (cache Cache) GetValByIndex(index int) []byte {
 	// initiating pull request
 	request := new(PushPullRequest)
 	request.QueueIndex = index
-	request.ByIndex = true
+	request.Operation = ">i"
 	request.ReturnPayload = make(chan []byte)
   cache.PushPullRequestCh <- request
 
@@ -506,8 +499,7 @@ func (cache Cache) GetKeyByIndex(index int) string {
 	// initiating pull request
 	request := new(PushPullRequest)
 	request.QueueIndex = index
-	request.ByIndex = false
-	request.ByIndexKey = true
+	request.Operation = ">ik"
 	request.ReturnPayload = make(chan []byte)
   cache.PushPullRequestCh <- request
 
