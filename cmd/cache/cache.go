@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 	"strings"
+	"fmt"
 	"crypto/tls"
 	"os"
 
@@ -20,6 +21,7 @@ type PushPullRequest struct {
 	Key string
 	QueueIndex int
 	ByIndex bool
+	ByIndexKey bool
 	IsCountRequest bool
 
 	ReturnPayload chan []byte
@@ -60,7 +62,7 @@ func (cache Cache) CacheHandler() {
 		case ppCacheOp := <-cache.PushPullRequestCh:
 			if !ppCacheOp.IsCountRequest {
 				// is a request for the value by key
-				if !ppCacheOp.ByIndex {
+				if !ppCacheOp.ByIndex && !ppCacheOp.ByIndexKey {
 					// checking if data attribute contains any data
 					// if it doesn't no data needs to be pushed
 					if len(ppCacheOp.Data) <= 0 { // pull operation
@@ -80,7 +82,7 @@ func (cache Cache) CacheHandler() {
 						queueIndex++
 					}
 				// is a request for the value by index
-				} else {
+				} else if ppCacheOp.ByIndex  {
 					var found bool
 					var reversedReqIndex int
 					// Iterate over cacheMem CacheVal which stores queue index
@@ -96,6 +98,28 @@ func (cache Cache) CacheHandler() {
 							found = true
 							// returning value at key to return channel
 							ppCacheOp.ReturnPayload <- data.Data
+						}
+					}
+					if !found {
+						// returning zero bytes if if there is no matching index
+						ppCacheOp.ReturnPayload <- []byte{}
+					}
+				} else if ppCacheOp.ByIndexKey  {
+					var found bool
+					var reversedReqIndex int
+					// Iterate over cacheMem CacheVal which stores queue index
+					for key, data := range cache.cacheMem {
+						if !(ppCacheOp.QueueIndex > len(cache.cacheMem)) {
+							// calculating reversed index
+							reversedReqIndex = len(cache.cacheMem) - ppCacheOp.QueueIndex
+						} else {
+							// setting reversed index to max len of cache-map
+							reversedReqIndex = len(cache.cacheMem)
+						}
+						if data.QueueIndex == reversedReqIndex {
+							found = true
+							// returning value at key to return channel
+							ppCacheOp.ReturnPayload <- []byte(key)
 						}
 					}
 					if !found {
@@ -194,7 +218,15 @@ func (cache Cache) RemoteConnHandler(port int) {
 									}
 									// reply to pull-request from chacheClient by index
 									c.Write(append(append([]byte(key+"->i-"), cache.GetValByIndex(index)...), []byte("\rnr")...))
-								}  else if operation == ">c" { //pull by index
+								} else if operation == ">ik" { //pull by index
+									index, err := strconv.Atoi(key)
+									if err != nil {
+										WarningLogger.Println(err)
+									}
+									fmt.Println(cache.GetKeyByIndex(index))
+									// reply to pull-request from chacheClient by index
+									c.Write(append(append([]byte(key+"->ik-"), []byte(cache.GetKeyByIndex(index))...), []byte("\rnr")...))
+								} else if operation == ">c" { //pull by index
 									index, err := strconv.Atoi(key)
 									if err != nil {
 										WarningLogger.Println(err)
@@ -452,14 +484,41 @@ func (cache Cache) GetValByIndex(index int) []byte {
 	request.ReturnPayload = make(chan []byte)
   cache.PushPullRequestCh <- request
 
-	reply := false
-	payload := []byte{}
+	var reply bool
+	var payload []byte
 
 	// waiting for request to be processed and retrieval of payload
 	for !reply {
 		select {
 		case liveDataRes := <-request.ReturnPayload:
 			payload = liveDataRes
+			reply = true
+			break
+		}
+	}
+	request = nil
+	return payload
+}
+
+
+// creates pull request for the remoteCache instance
+func (cache Cache) GetKeyByIndex(index int) string {
+	// initiating pull request
+	request := new(PushPullRequest)
+	request.QueueIndex = index
+	request.ByIndex = false
+	request.ByIndexKey = true
+	request.ReturnPayload = make(chan []byte)
+  cache.PushPullRequestCh <- request
+
+	var reply bool
+	var payload string
+
+	// waiting for request to be processed and retrieval of payload
+	for !reply {
+		select {
+		case liveDataRes := <-request.ReturnPayload:
+			payload = string(liveDataRes)
 			reply = true
 			break
 		}

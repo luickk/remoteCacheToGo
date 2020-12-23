@@ -25,12 +25,13 @@ func main() {
   // requesting key value from connected cache from key "remote"
   fmt.Println("Read val from key remote: "+string(client.GetValByKey("remote")))
 
-  // indexTestInstance(client)
+  indexTestInstance(client)
   // countTestInstance(client)
+  // indexKeyTestInstance(client)
 
   // starting testing routines
-  go concurrentTestInstanceA(client)
-  concurrentTestInstanceB(client)
+  // go concurrentTestInstanceA(client)
+  // concurrentTestInstanceB(client)
 }
 
 func indexTestInstance(client cacheClient.RemoteCache) {
@@ -38,6 +39,15 @@ func indexTestInstance(client cacheClient.RemoteCache) {
   for {
     i++
     fmt.Println("index "+strconv.Itoa(i) + ": " + string(client.GetValByIndex(i)))
+    time.Sleep(1 * time.Millisecond)
+  }
+}
+
+func indexKeyTestInstance(client cacheClient.RemoteCache) {
+  i := 0
+  for {
+    i++
+    fmt.Println("index(key) "+strconv.Itoa(i) + ": " + string(client.GetKeyByIndex(i)))
     time.Sleep(1 * time.Millisecond)
   }
 }

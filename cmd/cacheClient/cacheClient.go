@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
   "errors"
+	"fmt"
 	"os"
 	"log"
 
@@ -26,6 +27,7 @@ type PushPullRequest struct {
 	Key string
 	QueueIndex int
 	ByIndex bool
+	ByIndexKey bool
 	IsCountRequest bool
 
 	ReturnPayload chan []byte
@@ -119,6 +121,7 @@ func connHandler(conn net.Conn, cacheRequestReply chan *PushPullRequest) {
 							request := new(PushPullRequest)
 							request.Key = key
 							request.ByIndex = false
+							request.ByIndexKey = false
 							request.IsCountRequest = false
 							request.Data = payload
 							cacheRequestReply <- request
@@ -128,16 +131,31 @@ func connHandler(conn net.Conn, cacheRequestReply chan *PushPullRequest) {
 							// initiates reply to made pullrequest
 							request := new(PushPullRequest)
 							request.ByIndex = true
+							request.ByIndexKey = false
 							request.IsCountRequest = false
 							request.QueueIndex, _ = strconv.Atoi(key)
 							request.Data = payload
 							cacheRequestReply <- request
 							// tells gc it's ready to be removed
 							request = nil
-						} else if operation == ">c" {
+						} else if operation == ">ik" {
 							// initiates reply to made pullrequest
 							request := new(PushPullRequest)
 							request.ByIndex = false
+							request.ByIndexKey = true
+							request.IsCountRequest = false
+							request.QueueIndex, _ = strconv.Atoi(key)
+							request.Data = payload
+							fmt.Println(payload)
+							fmt.Println(key)
+							cacheRequestReply <- request
+							// tells gc it's ready to be removed
+							request = nil
+						}else if operation == ">c" {
+							// initiates reply to made pullrequest
+							request := new(PushPullRequest)
+							request.ByIndex = false
+							request.ByIndexKey = false
 							request.IsCountRequest = true
 							request.QueueIndex, _ = strconv.Atoi(key)
 							request.Data = payload
@@ -170,7 +188,7 @@ func (cache RemoteCache) pushPullRequestHandler() {
 			// checking if the request is a request for the current count of the cache
 			if !ppCacheOp.IsCountRequest {
 				// checking if the request is a request for a val by index
-				if !ppCacheOp.ByIndex {
+				if !ppCacheOp.ByIndex  && !ppCacheOp.ByIndexKey{
 					if len(ppCacheOp.Data) <= 0 { // pull operation
 						// adding request to cache-operation-buffer to assign it later to incoming request-reply
 						ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
@@ -180,8 +198,14 @@ func (cache RemoteCache) pushPullRequestHandler() {
 						// sends push request string to remoteCache instance
 						cache.conn.Write(append(append([]byte(ppCacheOp.Key + "-<-"), ppCacheOp.Data...), []byte("\rnr")...))
 					}
-				// by index req
-				} else {
+				// by index for key req
+				} else if ppCacheOp.ByIndexKey {
+					// adding request to cache-operation-buffer to assign it later to incoming request-reply
+					ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
+					// sending request to remoteCache instance
+					cache.conn.Write(append([]byte(strconv.Itoa(ppCacheOp.QueueIndex) + "->ik-"), []byte("\rnr")...))
+				// by index for key req
+				} else if ppCacheOp.ByIndex {
 					// adding request to cache-operation-buffer to assign it later to incoming request-reply
 					ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
 					// sending request to remoteCache instance
@@ -198,7 +222,8 @@ func (cache RemoteCache) pushPullRequestHandler() {
 		case cacheReply := <-cacheRequestReply:
 			for _, req := range ppCacheOpBuffer {
 				// checks if both, buffered req and incoming req from remoteCache instance are not of "by-index type"
-				if !cacheReply.ByIndex && !req.ByIndex {
+				// indicates that req is of type normal by key for val
+				if !cacheReply.ByIndex && !req.ByIndex && !cacheReply.ByIndexKey && !req.ByIndexKey {
 					// compares buffered-requests with req. replies from remoteCache instance
 					if cacheReply.Key == req.Key  && !req.Processed {
 						// fullfills pull-requests data return
@@ -213,6 +238,18 @@ func (cache RemoteCache) pushPullRequestHandler() {
 				} else if cacheReply.ByIndex && req.ByIndex {
 					// compares made requests from client with replies from remote cache
 					if cacheReply.QueueIndex == req.QueueIndex  && !req.Processed {
+						// fullfills pull-requests data return
+						req.ReturnPayload <- cacheReply.Data
+						req.Processed = true
+					} else if !req.Processed {
+						// if request is not answered immeadiatly, request is forgotten
+						req.Processed = true
+					}
+				// checks if both, buffered req and incoming req from remoteCache instance are of "by-index for key type"
+				} else if cacheReply.ByIndexKey && req.ByIndexKey {
+					// compares made requests from client with replies from remote cache
+					if cacheReply.QueueIndex == req.QueueIndex  && !req.Processed {
+						fmt.Println(cacheReply.Data)
 						// fullfills pull-requests data return
 						req.ReturnPayload <- cacheReply.Data
 						req.Processed = true
@@ -274,6 +311,7 @@ func (cache RemoteCache) AddValByKey(key string, val []byte) bool {
 		// initiates push request
 		request := new(PushPullRequest)
 		request.ByIndex = false
+		request.ByIndexKey = false
 		request.IsCountRequest = false
 		request.Key = key
 		request.Data = val
@@ -293,6 +331,7 @@ func (cache RemoteCache) GetValByKey(key string) []byte {
 		request := new(PushPullRequest)
 		request.Key = key
 		request.ByIndex = false
+		request.ByIndexKey = false
 		request.IsCountRequest = false
 		request.ReturnPayload = make(chan []byte)
 	  cache.PushPullRequestCh <- request
@@ -322,6 +361,7 @@ func (cache RemoteCache) GetCountByIndex(index int) int {
 	request := new(PushPullRequest)
 	request.QueueIndex = index
 	request.ByIndex = false
+	request.ByIndexKey = false
 	request.IsCountRequest = true
 
 	request.ReturnPayload = make(chan []byte)
@@ -358,14 +398,41 @@ func (cache RemoteCache) GetValByIndex(index int) []byte {
 	request.ReturnPayload = make(chan []byte)
   cache.PushPullRequestCh <- request
 
-	reply := false
-	payload := []byte{}
+	var reply bool
+	var payload []byte
 
 	// waiting for request to be processed and retrieval of payload
 	for !reply {
 		select {
 		case liveDataRes := <-request.ReturnPayload:
 			payload = liveDataRes
+			reply = true
+			break
+		}
+	}
+	request = nil
+	return payload
+}
+
+// creates pull request for the remoteCache instance
+func (cache RemoteCache) GetKeyByIndex(index int) string {
+	// initiating pull request
+	request := new(PushPullRequest)
+	request.QueueIndex = index
+	request.ByIndex = false
+	request.ByIndexKey = true
+	request.IsCountRequest = false
+	request.ReturnPayload = make(chan []byte)
+  cache.PushPullRequestCh <- request
+
+	var reply bool
+	var payload string
+
+	// waiting for request to be processed and retrieval of payload
+	for !reply {
+		select {
+		case liveDataRes := <-request.ReturnPayload:
+			payload = string(liveDataRes)
 			reply = true
 			break
 		}
