@@ -6,7 +6,6 @@ import (
 	"bufio"
 	"bytes"
 	"strconv"
-	"time"
 	"strings"
 	"crypto/tls"
 	"os"
@@ -149,6 +148,118 @@ func (cache Cache) CacheHandler() {
 	}
 }
 
+
+// client handler, handles connected client sessions
+// parses all incoming data
+// hanles all operations on connection object
+func clientHandler(c net.Conn, cache Cache) {
+	InfoLogger.Printf("New client connected to %s \n", c.RemoteAddr().String())
+	for {
+		netData := make([]byte, tcpConnBuffer)
+		n, err := bufio.NewReader(c).Read(netData)
+		if err != nil {
+			ErrorLogger.Println(err)
+			return
+		}
+		netData = netData[:n]
+
+		// splitting data to prevent buffer overflow confusion
+		netDataSeperated := bytes.Split(netData, []byte("\rnr"))
+		if err != nil {
+			WarningLogger.Println(err)
+			return
+		}
+		// var dataDelimSplitByte [][]byte
+		var key string
+		// var operation string
+		// var payload []byte
+		var encodedPPR []byte
+		decodedPPR := new(util.SPushPullReq)
+		encodingPPR := new(util.SPushPullReq)
+		// iterating over data seperated by delimiter
+		for _, data := range netDataSeperated {
+			if len(data) >= 1 {
+					// parsing protocol (you can find more about the protocol design in the README)
+					// dataDelimSplitByte = bytes.SplitN(data, []byte("-"), 3)
+					// if len(dataDelimSplitByte) >= 3 {
+						// protocol key (first element when seperated by "-" delim)
+						// key = string(dataDelimSplitByte[0])
+						// operation = string(dataDelimSplitByte[1])
+						// payload = dataDelimSplitByte[2]
+
+						InfoLogger.Println(string(netData))
+						if err := util.DecodePushPullReq(decodedPPR, netData); err != nil {
+							WarningLogger.Println(err)
+						}
+						InfoLogger.Println(decodedPPR)
+						switch decodedPPR.Operation {
+						case ">":
+							encodingPPR.Key = decodedPPR.Key
+							encodingPPR.Operation = ">"
+							encodingPPR.Data = cache.GetValByKey(key)
+							encodedPPR, err = util.EncodePushPullReq(encodingPPR)
+							if err != nil {
+								WarningLogger.Println(err)
+							}
+							// reply to pull-request from chacheClient by key
+							c.Write(append(encodedPPR, []byte("\rnr")...))
+						case ">i":
+							index, err := strconv.Atoi(key)
+							if err != nil {
+								WarningLogger.Println(err)
+							}
+							// reply to pull-request from chacheClient by index
+							encodingPPR.Key = decodedPPR.Key
+							encodingPPR.Operation = ">i"
+							encodingPPR.Data = cache.GetValByIndex(index)
+							encodedPPR, err = util.EncodePushPullReq(encodingPPR)
+							if err != nil {
+								WarningLogger.Println(err)
+							}
+							// reply to pull-request from chacheClient by key
+							c.Write(append(encodedPPR, []byte("\rnr")...))
+						case ">ik":
+							index, err := strconv.Atoi(key)
+							if err != nil {
+								WarningLogger.Println(err)
+							}
+							// reply to pull-request from chacheClient by index
+							encodingPPR.Key = decodedPPR.Key
+							encodingPPR.Operation = ">ik"
+							encodingPPR.Data = []byte(cache.GetKeyByIndex(index))
+							encodedPPR, err = util.EncodePushPullReq(encodingPPR)
+							if err != nil {
+								WarningLogger.Println(err)
+							}
+							// reply to pull-request from chacheClient by key
+							c.Write(append(encodedPPR, []byte("\rnr")...))
+						case ">c":
+							index, err := strconv.Atoi(key)
+							if err != nil {
+								WarningLogger.Println(err)
+							}
+							// reply to pull-request from chacheClient by index
+							encodingPPR.Key = decodedPPR.Key
+							encodingPPR.Operation = ">c"
+							encodingPPR.Data = []byte(strconv.Itoa(cache.GetCountByIndex(index)))
+							encodedPPR, err = util.EncodePushPullReq(encodingPPR)
+							if err != nil {
+								WarningLogger.Println(err)
+							}
+							// reply to pull-request from chacheClient by key
+							c.Write(append(encodedPPR, []byte("\rnr")...))
+						case "<":
+							// writing push-request from client to cache
+							cache.AddValByKey(decodedPPR.Key, decodedPPR.Data)
+						default:
+								WarningLogger.Println("Parsing Error")
+						}
+					// }
+				}
+			}
+		}
+}
+
 // provides network interface for given cache
 func (cache Cache) RemoteConnHandler(port int) {
 	// opening tcp server
@@ -166,77 +277,7 @@ func (cache Cache) RemoteConnHandler(port int) {
 			ErrorLogger.Println(err)
 			return
 		}
-
-		// client handler, handles connected client sessions
-		// parses all incoming data
-		// hanles all operations on connection object
-		go func(c net.Conn, cache Cache) {
-			InfoLogger.Printf("New client connected to %s \n", c.RemoteAddr().String())
-			for {
-				netData := make([]byte, tcpConnBuffer)
-				n, err := bufio.NewReader(c).Read(netData)
-				if err != nil {
-					ErrorLogger.Println(err)
-					return
-				}
-				netData = netData[:n]
-
-				// splitting data to prevent buffer overflow confusion
-				netDataSeperated := bytes.Split(netData, []byte("\rnr"))
-				if err != nil {
-					WarningLogger.Println(err)
-					return
-				}
-				var dataDelimSplitByte [][]byte
-				var key string
-				var operation string
-				var payload []byte
-				// iterating over data seperated by delimiter
-				for _, data := range netDataSeperated {
-					if len(data) >= 1 {
-							// parsing protocol (you can find more about the protocol design in the README)
-							dataDelimSplitByte = bytes.SplitN(data, []byte("-"), 3)
-							if len(dataDelimSplitByte) >= 3 {
-								// protocol key (first element when seperated by "-" delim)
-								key = string(dataDelimSplitByte[0])
-								operation = string(dataDelimSplitByte[1])
-								payload = dataDelimSplitByte[2]
-								switch operation {
-								case ">":
-									// reply to pull-request from chacheClient by key
-									c.Write(append(append([]byte(key+"->-"), cache.GetValByKey(key)...), []byte("\rnr")...))
-								case ">i":
-									index, err := strconv.Atoi(key)
-									if err != nil {
-										WarningLogger.Println(err)
-									}
-									// reply to pull-request from chacheClient by index
-									c.Write(append(append([]byte(key+"->i-"), cache.GetValByIndex(index)...), []byte("\rnr")...))
-								case ">ik":
-									index, err := strconv.Atoi(key)
-									if err != nil {
-										WarningLogger.Println(err)
-									}
-									// reply to pull-request from chacheClient by index
-									c.Write(append(append([]byte(key+"->ik-"), []byte(cache.GetKeyByIndex(index))...), []byte("\rnr")...))
-								case ">c":
-									index, err := strconv.Atoi(key)
-									if err != nil {
-										WarningLogger.Println(err)
-									}
-									// reply to pull-request from chacheClient by index
-									c.Write(append(append([]byte(key+"->c-"), []byte(strconv.Itoa(cache.GetCountByIndex(index)))...), []byte("\rnr")...))
-								case "<":
-									// writing push-request from client to cache
-									cache.AddValByKey(key, payload)
-								default:
-										WarningLogger.Println("Parsing Error")
-								}
-							}
-						}
-					}
-				}
-		}(c, cache)
+		go clientHandler(c, cache)
 	}
 }
 
@@ -274,89 +315,7 @@ func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, dosProtection b
 		// client is not banned
 		if !dosProt.Client(strings.Split(c.RemoteAddr().String(), ":")[0]) || !dosProtection {
 		  InfoLogger.Println("Accepted client connection")
-
-			// connection listener waits for incoming data
-			// incoming data is parsed and possible request answers are pushed to back to the CacheHandler
-			go func(c net.Conn, cache Cache) {
-				InfoLogger.Println("New client connected to %s \n", c.RemoteAddr().String())
-				InfoLogger.Println("waiting for authentication")
-				// true if client sent correct password hash
-				var authenticated = false
-				// limits authentification tries
-				var bruteForceTimer = false
-				// time each client has to wait before next reconnect
-				var bruteForceProtectionTime = 1
-
-				var dataDelimSplitByte [][]byte
-				var key string
-				var operation string
-				var payload []byte
-				for {
-					// data buffer
-					netData := make([]byte, tcpConnBuffer)
-					n, err := bufio.NewReader(c).Read(netData)
-					if err != nil {
-						ErrorLogger.Println(err)
-						return
-					}
-					// extracting data read by reader from buffer
-					netData = netData[:n]
-
-					// splitting data to prevent overflow confusion
-					netDataSeperated := bytes.Split(netData, []byte("\rnr"))
-					if err != nil {
-						WarningLogger.Println(err)
-						return
-					}
-
-					// splitting data to prevent buffer overflow confusion
-					for _, data := range netDataSeperated {
-						if len(data) >= 1 {
-							// checking if client has authenticated
-							if authenticated {
-								// parsing protocol (you can find more about the protocol design in the README)
-								dataDelimSplitByte = bytes.SplitN(data, []byte("-"), 3)
-								if len(dataDelimSplitByte) >= 3 {
-									// protocol key (first element when seperated by "-" delim)
-									key = string(dataDelimSplitByte[0])
-									operation = string(dataDelimSplitByte[1])
-									payload = dataDelimSplitByte[2]
-									// if request operation is pull, the pull request is replied
-									if operation == ">" { //pull
-										// replying to pull request with requested data
-										c.Write(append(append([]byte(key+"->-"), cache.GetValByKey(key)...), []byte("\rnr")...))
-										// executing push request
-									} else if operation == "<" { // push
-										// setting value for given key
-										cache.AddValByKey(key, payload)
-									}
-								} else {
-									WarningLogger.Println("Parsing error")
-								}
-							} else {
-								// checking if password is valid and if the bruteForceTimer is finished
-								if string(data) == pwHash  && !bruteForceTimer {
-									InfoLogger.Println("Authentification successful")
-									authenticated = true
-								// bruteForceTimer has not finished yet
-								} else if bruteForceTimer {
-									InfoLogger.Println("Client tried to authenticate in brute force protection time")
-								// password was invalid
-								} else {
-									InfoLogger.Println("Authentification unsuccessful")
-									bruteForceTimer = true
-									// resetting timer
-									timer := time.NewTimer(time.Second*time.Duration(bruteForceProtectionTime))
-									go func() {
-										<-timer.C
-										bruteForceTimer = false
-							    }()
-								}
-							}
-						}
-					}
-				}
-			}(c, cache)
+			go clientHandler(c, cache)
 		// client is banned
 		} else {
 		 InfoLogger.Println("Refused client connection")

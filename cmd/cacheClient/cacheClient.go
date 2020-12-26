@@ -93,65 +93,76 @@ func connHandler(conn net.Conn, cacheRequestReply chan *PushPullRequest) {
 		}
 		// setting data slice to readers index
 		netData = netData[:n]
+
 		// splitting data to prevent overflow confusion
 		netDataSeperated := bytes.Split(netData, []byte("\rnr"))
 		if err != nil {
 			WarningLogger.Println(err)
 		}
-		var dataDelimSplitByte [][]byte
-		var key string
-		var operation string
-		var payload []byte
+		// var dataDelimSplitByte [][]byte
+		// var key string
+		// var operation string
+		// var payload []byte
+
+		decodedPPR := new(util.SPushPullReq)
+
 		// iterating over received data split by delimiter
 		for _, data := range netDataSeperated {
 			if len(data) >= 1 {
 					// parsing protocol (you can find more about the protocol design in the README)
-					dataDelimSplitByte = bytes.SplitN(data, []byte("-"), 3)
+					// dataDelimSplitByte = bytes.SplitN(data, []byte("-"), 3)
 					// checking if protocol is valid, respectively completely available
-					if len(dataDelimSplitByte) >= 3 {
-						key = string(dataDelimSplitByte[0])
-						operation = string(dataDelimSplitByte[1])
-						payload = dataDelimSplitByte[2]
+					// if len(dataDelimSplitByte) >= 3 {
+						// key = string(dataDelimSplitByte[0])
+						// operation = string(dataDelimSplitByte[1])
+						// payload = dataDelimSplitByte[2]
 						// checks if incoming request wants to reply to pull request
-						if operation == ">" {
+
+						InfoLogger.Println(string(netData))
+						if err := util.DecodePushPullReq(decodedPPR, netData); err != nil {
+							WarningLogger.Println(err)
+						}
+						InfoLogger.Println(decodedPPR)
+						switch decodedPPR.Operation {
+						case ">":
 							// initiates reply to made pullrequest
 							request := new(PushPullRequest)
-							request.Key = key
+							request.Key = decodedPPR.Key
 							request.Operation = ">"
-							request.Data = payload
+							request.Data = decodedPPR.Data
 							cacheRequestReply <- request
 							// tells gc it's ready to be removed
 							request = nil
-						} else if operation == ">i" {
+						case ">i":
 							// initiates reply to made pullrequest
 							request := new(PushPullRequest)
 							request.Operation = ">i"
-							request.QueueIndex, _ = strconv.Atoi(key)
-							request.Data = payload
+							request.QueueIndex, _ = strconv.Atoi(decodedPPR.Key)
+							request.Data = decodedPPR.Data
 							cacheRequestReply <- request
 							// tells gc it's ready to be removed
 							request = nil
-						} else if operation == ">ik" {
+						case ">ik":
 							// initiates reply to made pullrequest
 							request := new(PushPullRequest)
 							request.Operation = ">ik"
-							request.QueueIndex, _ = strconv.Atoi(key)
-							request.Data = payload
+							request.QueueIndex, _ = strconv.Atoi(decodedPPR.Key)
+							request.Data = decodedPPR.Data
 							cacheRequestReply <- request
 							// tells gc it's ready to be removed
 							request = nil
-						}else if operation == ">c" {
+						case ">c":
 							// initiates reply to made pullrequest
 							request := new(PushPullRequest)
 							request.Operation = ">c"
-							request.QueueIndex, _ = strconv.Atoi(key)
-							request.Data = payload
+							request.QueueIndex, _ = strconv.Atoi(decodedPPR.Key)
+							request.Data = decodedPPR.Data
 							cacheRequestReply <- request
 							// tells gc it's ready to be removed
 							request = nil
 						}
 					}
-			}
+		// 	}
 		}
 	}
 }
@@ -164,6 +175,9 @@ func (cache RemoteCache) pushPullRequestHandler() {
 	cacheRequestReply := make(chan *PushPullRequest)
 	// push pull buffer, buffers all made pull requests to remoteCache instance to find & route replies to call
 	var ppCacheOpBuffer []*PushPullRequest
+	var encodedPPR []byte
+	var err error
+	encodingPPR := new(util.SPushPullReq)
 
 	// starting connection Handler routine to parse incoming data and add to push request-replies to cacheListiner
 	go connHandler(cache.conn, cacheRequestReply)
@@ -178,26 +192,71 @@ func (cache RemoteCache) pushPullRequestHandler() {
 					// adding request to cache-operation-buffer to assign it later to incoming request-reply
 					ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
 					// sends pull request string to remoteCache instance
-					cache.conn.Write(append([]byte(ppCacheOp.Key + "->-"), []byte("\rnr")...))
-				} else if len(ppCacheOp.Data) > 0 { // push operation
+					// cache.conn.Write(append([]byte(ppCacheOp.Key + "->-"), []byte("\rnr")...))
+					encodingPPR.Key = ppCacheOp.Key
+					encodingPPR.Operation = ">"
+					encodingPPR.Data = []byte{}
+					encodedPPR, err = util.EncodePushPullReq(encodingPPR)
+					if err != nil {
+						WarningLogger.Println(err)
+					}
+					// reply to pull-request from chacheClient by key
+					cache.conn.Write(append(encodedPPR, []byte("\rnr")...))
+					} else if len(ppCacheOp.Data) > 0 { // push operation
 					// sends push request string to remoteCache instance
-					cache.conn.Write(append(append([]byte(ppCacheOp.Key + "-<-"), ppCacheOp.Data...), []byte("\rnr")...))
+					// cache.conn.Write(append(append([]byte(ppCacheOp.Key + "-<-"), ppCacheOp.Data...), []byte("\rnr")...))
+					encodingPPR.Key = ppCacheOp.Key
+					encodingPPR.Operation = "<"
+					encodingPPR.Data = ppCacheOp.Data
+					encodedPPR, err = util.EncodePushPullReq(encodingPPR)
+					if err != nil {
+						WarningLogger.Println(err)
+					}
+					// reply to pull-request from chacheClient by key
+					cache.conn.Write(append(encodedPPR, []byte("\rnr")...))
 				}
 			case ">i":
 				// adding request to cache-operation-buffer to assign it later to incoming request-reply
 				ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
 				// sending request to remoteCache instance
-				cache.conn.Write(append([]byte(strconv.Itoa(ppCacheOp.QueueIndex) + "->i-"), []byte("\rnr")...))
+				// cache.conn.Write(append([]byte(strconv.Itoa(ppCacheOp.QueueIndex) + "->i-"), []byte("\rnr")...))
+				encodingPPR.Key = strconv.Itoa(ppCacheOp.QueueIndex)
+				encodingPPR.Operation = ">i"
+				encodingPPR.Data = []byte{}
+				encodedPPR, err = util.EncodePushPullReq(encodingPPR)
+				if err != nil {
+					WarningLogger.Println(err)
+				}
+				// reply to pull-request from chacheClient by key
+				cache.conn.Write(append(encodedPPR, []byte("\rnr")...))
 			case ">ik":
 				// adding request to cache-operation-buffer to assign it later to incoming request-reply
 				ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
 				// sending request to remoteCache instance
-				cache.conn.Write(append([]byte(strconv.Itoa(ppCacheOp.QueueIndex) + "->ik-"), []byte("\rnr")...))
+				// cache.conn.Write(append([]byte(strconv.Itoa(ppCacheOp.QueueIndex) + "->ik-"), []byte("\rnr")...))
+				encodingPPR.Key = strconv.Itoa(ppCacheOp.QueueIndex)
+				encodingPPR.Operation = ">ik"
+				encodingPPR.Data = []byte{}
+				encodedPPR, err = util.EncodePushPullReq(encodingPPR)
+				if err != nil {
+					WarningLogger.Println(err)
+				}
+				// reply to pull-request from chacheClient by key
+				cache.conn.Write(append(encodedPPR, []byte("\rnr")...))
 			case ">c":
 				// adding request to cache-operation-buffer to assign it later to incoming request-reply
 				ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
 				// sending request to remoteCache instance
-				cache.conn.Write(append([]byte(strconv.Itoa(ppCacheOp.QueueIndex) + "->c-"), []byte("\rnr")...))
+				// cache.conn.Write(append([]byte(strconv.Itoa(ppCacheOp.QueueIndex) + "->c-"), []byte("\rnr")...))
+				encodingPPR.Key = strconv.Itoa(ppCacheOp.QueueIndex)
+				encodingPPR.Operation = ">c"
+				encodingPPR.Data = []byte{}
+				encodedPPR, err = util.EncodePushPullReq(encodingPPR)
+				if err != nil {
+					WarningLogger.Println(err)
+				}
+				// reply to pull-request from chacheClient by key
+				cache.conn.Write(append(encodedPPR, []byte("\rnr")...))
 			}
 		// waits for possible request replies to pull-requests from remoteCache instance via. channel from connection-handler
 		case cacheReply := <-cacheRequestReply:
