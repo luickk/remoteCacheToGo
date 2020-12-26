@@ -99,30 +99,15 @@ func connHandler(conn net.Conn, cacheRequestReply chan *PushPullRequest) {
 		if err != nil {
 			WarningLogger.Println(err)
 		}
-		// var dataDelimSplitByte [][]byte
-		// var key string
-		// var operation string
-		// var payload []byte
 
 		decodedPPR := new(util.SPushPullReq)
 
 		// iterating over received data split by delimiter
 		for _, data := range netDataSeperated {
 			if len(data) >= 1 {
-					// parsing protocol (you can find more about the protocol design in the README)
-					// dataDelimSplitByte = bytes.SplitN(data, []byte("-"), 3)
-					// checking if protocol is valid, respectively completely available
-					// if len(dataDelimSplitByte) >= 3 {
-						// key = string(dataDelimSplitByte[0])
-						// operation = string(dataDelimSplitByte[1])
-						// payload = dataDelimSplitByte[2]
-						// checks if incoming request wants to reply to pull request
-
-						InfoLogger.Println(string(netData))
-						if err := util.DecodePushPullReq(decodedPPR, netData); err != nil {
+						if err := util.DecodePushPullReq(decodedPPR, data); err != nil {
 							WarningLogger.Println(err)
 						}
-						InfoLogger.Println(decodedPPR)
 						switch decodedPPR.Operation {
 						case ">":
 							// initiates reply to made pullrequest
@@ -162,7 +147,6 @@ func connHandler(conn net.Conn, cacheRequestReply chan *PushPullRequest) {
 							request = nil
 						}
 					}
-		// 	}
 		}
 	}
 }
@@ -192,7 +176,6 @@ func (cache RemoteCache) pushPullRequestHandler() {
 					// adding request to cache-operation-buffer to assign it later to incoming request-reply
 					ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
 					// sends pull request string to remoteCache instance
-					// cache.conn.Write(append([]byte(ppCacheOp.Key + "->-"), []byte("\rnr")...))
 					encodingPPR.Key = ppCacheOp.Key
 					encodingPPR.Operation = ">"
 					encodingPPR.Data = []byte{}
@@ -204,7 +187,6 @@ func (cache RemoteCache) pushPullRequestHandler() {
 					cache.conn.Write(append(encodedPPR, []byte("\rnr")...))
 					} else if len(ppCacheOp.Data) > 0 { // push operation
 					// sends push request string to remoteCache instance
-					// cache.conn.Write(append(append([]byte(ppCacheOp.Key + "-<-"), ppCacheOp.Data...), []byte("\rnr")...))
 					encodingPPR.Key = ppCacheOp.Key
 					encodingPPR.Operation = "<"
 					encodingPPR.Data = ppCacheOp.Data
@@ -219,7 +201,6 @@ func (cache RemoteCache) pushPullRequestHandler() {
 				// adding request to cache-operation-buffer to assign it later to incoming request-reply
 				ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
 				// sending request to remoteCache instance
-				// cache.conn.Write(append([]byte(strconv.Itoa(ppCacheOp.QueueIndex) + "->i-"), []byte("\rnr")...))
 				encodingPPR.Key = strconv.Itoa(ppCacheOp.QueueIndex)
 				encodingPPR.Operation = ">i"
 				encodingPPR.Data = []byte{}
@@ -233,7 +214,6 @@ func (cache RemoteCache) pushPullRequestHandler() {
 				// adding request to cache-operation-buffer to assign it later to incoming request-reply
 				ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
 				// sending request to remoteCache instance
-				// cache.conn.Write(append([]byte(strconv.Itoa(ppCacheOp.QueueIndex) + "->ik-"), []byte("\rnr")...))
 				encodingPPR.Key = strconv.Itoa(ppCacheOp.QueueIndex)
 				encodingPPR.Operation = ">ik"
 				encodingPPR.Data = []byte{}
@@ -247,7 +227,6 @@ func (cache RemoteCache) pushPullRequestHandler() {
 				// adding request to cache-operation-buffer to assign it later to incoming request-reply
 				ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
 				// sending request to remoteCache instance
-				// cache.conn.Write(append([]byte(strconv.Itoa(ppCacheOp.QueueIndex) + "->c-"), []byte("\rnr")...))
 				encodingPPR.Key = strconv.Itoa(ppCacheOp.QueueIndex)
 				encodingPPR.Operation = ">c"
 				encodingPPR.Data = []byte{}

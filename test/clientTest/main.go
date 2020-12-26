@@ -30,8 +30,8 @@ func main() {
   // indexKeyTestInstance(client)
 
   // starting testing routines
-  go concurrentTestInstanceA(client)
-  concurrentTestInstanceB(client)
+  // go concurrentTestInstanceA(client)
+  // concurrentTestInstanceB(client)
 }
 
 func indexTestInstance(client cacheClient.RemoteCache) {

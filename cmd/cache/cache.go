@@ -169,34 +169,21 @@ func clientHandler(c net.Conn, cache Cache) {
 			WarningLogger.Println(err)
 			return
 		}
-		// var dataDelimSplitByte [][]byte
-		var key string
-		// var operation string
-		// var payload []byte
+
 		var encodedPPR []byte
 		decodedPPR := new(util.SPushPullReq)
 		encodingPPR := new(util.SPushPullReq)
 		// iterating over data seperated by delimiter
 		for _, data := range netDataSeperated {
 			if len(data) >= 1 {
-					// parsing protocol (you can find more about the protocol design in the README)
-					// dataDelimSplitByte = bytes.SplitN(data, []byte("-"), 3)
-					// if len(dataDelimSplitByte) >= 3 {
-						// protocol key (first element when seperated by "-" delim)
-						// key = string(dataDelimSplitByte[0])
-						// operation = string(dataDelimSplitByte[1])
-						// payload = dataDelimSplitByte[2]
-
-						InfoLogger.Println(string(netData))
-						if err := util.DecodePushPullReq(decodedPPR, netData); err != nil {
+						if err := util.DecodePushPullReq(decodedPPR, data); err != nil {
 							WarningLogger.Println(err)
 						}
-						InfoLogger.Println(decodedPPR)
 						switch decodedPPR.Operation {
 						case ">":
 							encodingPPR.Key = decodedPPR.Key
 							encodingPPR.Operation = ">"
-							encodingPPR.Data = cache.GetValByKey(key)
+							encodingPPR.Data = cache.GetValByKey(decodedPPR.Key)
 							encodedPPR, err = util.EncodePushPullReq(encodingPPR)
 							if err != nil {
 								WarningLogger.Println(err)
@@ -204,7 +191,7 @@ func clientHandler(c net.Conn, cache Cache) {
 							// reply to pull-request from chacheClient by key
 							c.Write(append(encodedPPR, []byte("\rnr")...))
 						case ">i":
-							index, err := strconv.Atoi(key)
+							index, err := strconv.Atoi(decodedPPR.Key)
 							if err != nil {
 								WarningLogger.Println(err)
 							}
@@ -219,7 +206,7 @@ func clientHandler(c net.Conn, cache Cache) {
 							// reply to pull-request from chacheClient by key
 							c.Write(append(encodedPPR, []byte("\rnr")...))
 						case ">ik":
-							index, err := strconv.Atoi(key)
+							index, err := strconv.Atoi(decodedPPR.Key)
 							if err != nil {
 								WarningLogger.Println(err)
 							}
@@ -234,7 +221,7 @@ func clientHandler(c net.Conn, cache Cache) {
 							// reply to pull-request from chacheClient by key
 							c.Write(append(encodedPPR, []byte("\rnr")...))
 						case ">c":
-							index, err := strconv.Atoi(key)
+							index, err := strconv.Atoi(decodedPPR.Key)
 							if err != nil {
 								WarningLogger.Println(err)
 							}
@@ -254,7 +241,6 @@ func clientHandler(c net.Conn, cache Cache) {
 						default:
 								WarningLogger.Println("Parsing Error")
 						}
-					// }
 				}
 			}
 		}
