@@ -6,14 +6,11 @@ import (
 )
 
 // serializable pp req
-// cache.conn.Write(append(append([]byte(ppCacheOp.Key + "-<-"), ppCacheOp.Data...), []byte("\rnr")...))
 type SPushPullReq struct {
 	Key string
 	Operation string
 	Data []byte
 }
-
-
 
 func EncodePushPullReq(sPushPullReq *SPushPullReq) ([]byte, error) {
 	serializedPPR, err := json.Marshal(&sPushPullReq)
@@ -51,4 +48,14 @@ func Index(limit int, predicate func(i int) bool) int {
         }
     }
     return -1
+}
+
+func Padd(paddSize int, inp []byte) []byte {
+  if len(inp) > paddSize {
+    return []byte{}
+  }
+  padding := make([]byte, paddSize)
+  copy(padding[paddSize-len(inp):], inp)
+  padding = nil
+  return inp
 }

@@ -188,8 +188,14 @@ func clientHandler(c net.Conn, cache Cache) {
 							if err != nil {
 								WarningLogger.Println(err)
 							}
-							// reply to pull-request from chacheClient by key
-							c.Write(append(encodedPPR, []byte("\rnr")...))
+							padded := util.Padd(tcpConnBuffer, encodedPPR)
+							if len(padded) != 0 {
+								InfoLogger.Println(len(encodedPPR))
+								InfoLogger.Println(len(padded))
+								// reply to pull-request from chacheClient by key
+								c.Write(padded)
+							}
+							padded = nil
 						case ">i":
 							index, err := strconv.Atoi(decodedPPR.Key)
 							if err != nil {
