@@ -14,11 +14,7 @@ import (
 )
 
 // defining different levels of loggers
-var (
-    WarningLogger *log.Logger
-    InfoLogger    *log.Logger
-    ErrorLogger   *log.Logger
-)
+var WarningLogger *log.Logger
 
 // struct to handle any requests for the pushPullRequestHandler which operates on remoteCache connection
 type PushPullRequest struct {
@@ -40,43 +36,41 @@ type RemoteCache struct {
 
 // tcpConnBuffer defines the buffer size of the TCP conn reader
 var tcpConnBuffer = 2048
-var maxKeySize = 500
-var maxValSize = 500
 
 // connectes to remoteCache and returns connection
 // NO tls NO authentication
-func connectToRemoteHandler(address string, port int) (bool, net.Conn) {
+func connectToRemoteHandler(address string, port int) (net.Conn, error) {
 	// dialing unencrypted tcp connection
   c, err := net.Dial("tcp", address+":"+strconv.Itoa(port))
   if err != nil {
-    WarningLogger.Println(err)
-    return false, c
+    return c, err
   }
-  return true, c
+  return c, nil
 }
 
 // connectes to remoteCache and returns connection via. TLS protocol
 // tls requires signed cert and password for authentication
-func connectToTlsRemoteHandler(address string, port int, pwHash string, rootCert string) (bool, net.Conn) {
+func connectToTlsRemoteHandler(address string, port int, pwHash string, rootCert string) (net.Conn, error) {
+	var err error
+	var c net.Conn
 	// creating and appending new cert pool with x509 standard
 	roots := x509.NewCertPool()
 	ok := roots.AppendCertsFromPEM([]byte(rootCert))
 	if !ok {
-		ErrorLogger.Println("Failed to parse root certificate")
+		return c, errors.New("failed to parse root certificate")
 	}
 	// initing conifiguration for TLS connection
 	config := &tls.Config{RootCAs: roots}
 
 	// dial encrypted tls connection
-	c, err := tls.Dial("tcp", address+":"+strconv.Itoa(port), config)
+	c, err = tls.Dial("tcp", address+":"+strconv.Itoa(port), config)
 	if err != nil {
-		ErrorLogger.Println(err)
-    return false, c
+    return c, err
 	}
 	// sending password hash in order to authenticate
 	c.Write([]byte(pwHash))
 
-  return true, c
+  return c, err
 }
 
 
@@ -87,6 +81,7 @@ func connHandler(conn net.Conn, cacheRequestReply chan *PushPullRequest) {
 	decodedPPR := new(util.SPushPullReq)
 	netDataBuffer := make([]byte, tcpConnBuffer)
 	reader := bufio.NewReader(conn)
+	request := new(PushPullRequest)
 	for {
 		netDataBuffer, err = reader.ReadBytes(0x0)
 		if err != nil {
@@ -103,40 +98,25 @@ func connHandler(conn net.Conn, cacheRequestReply chan *PushPullRequest) {
 			switch decodedPPR.Operation {
 			case ">":
 				// initiates reply to made pullrequest
-				request := new(PushPullRequest)
 				request.Key = decodedPPR.Key
 				request.Operation = ">"
 				request.Data = decodedPPR.Data
 				cacheRequestReply <- request
-				// tells gc it's ready to be removed
-				request = nil
 			case ">i":
-				// initiates reply to made pullrequest
-				request := new(PushPullRequest)
 				request.Operation = ">i"
 				request.QueueIndex, _ = strconv.Atoi(decodedPPR.Key)
 				request.Data = decodedPPR.Data
 				cacheRequestReply <- request
-				// tells gc it's ready to be removed
-				request = nil
 			case ">ik":
-				// initiates reply to made pullrequest
-				request := new(PushPullRequest)
 				request.Operation = ">ik"
 				request.QueueIndex, _ = strconv.Atoi(decodedPPR.Key)
 				request.Data = decodedPPR.Data
 				cacheRequestReply <- request
-				// tells gc it's ready to be removed
-				request = nil
 			case ">c":
-				// initiates reply to made pullrequest
-				request := new(PushPullRequest)
 				request.Operation = ">c"
 				request.QueueIndex, _ = strconv.Atoi(decodedPPR.Key)
 				request.Data = decodedPPR.Data
 				cacheRequestReply <- request
-				// tells gc it's ready to be removed
-				request = nil
 			}
 		}
 	}
@@ -278,26 +258,29 @@ func (cache RemoteCache) pushPullRequestHandler() {
 // initiates new RemoteCache struct and connects to remoteCache instance
 // params concerning tls (tls, pwHash, rootCert) can be initiated empty if tls bool is false
 func New(address string, port int, tls bool, pwHash string, rootCert string) (RemoteCache, error) {
-	// initing connection indicator and conn
-	var connected bool
-	var conn net.Conn
-
 	// initiating different logger
-	InfoLogger = log.New(os.Stdout, "[NODE] INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
 	WarningLogger = log.New(os.Stdout, "[NODE] WARNING: ", log.Ldate|log.Ltime|log.Lshortfile)
-	ErrorLogger = log.New(os.Stdout, "[NODE] ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+
+	var conn net.Conn
+	var err error
+
+	// initing remote cache struct
+	cache := RemoteCache{conn, make(chan *PushPullRequest), false}
 
 	// checking ig tls is enabled or not
 	if tls {
-		connected, conn = connectToTlsRemoteHandler(address, port, pwHash, rootCert)
+		conn, err = connectToTlsRemoteHandler(address, port, pwHash, rootCert)
+	  if err != nil {
+			return cache, err
+	  }
 	} else {
-		connected, conn = connectToRemoteHandler(address, port)
+		conn, err = connectToRemoteHandler(address, port)
+	  if err != nil {
+			return cache, err
+	  }
 	}
-	// initing remote cache struct
-	cache := RemoteCache{conn, make(chan *PushPullRequest), false}
-  if !connected {
-		return cache, errors.New("timeout")
-  }
+	cache.conn = conn
+
 	// starts pushPullRequestHandler for concurrent request handling
   go cache.pushPullRequestHandler()
 	return cache, nil
@@ -306,7 +289,7 @@ func New(address string, port int, tls bool, pwHash string, rootCert string) (Re
 // adds key value to remote cache
 // (can also overwrite/ replace)
 func (cache RemoteCache) AddValByKey(key string, val []byte) error {
-	if len(key) < maxKeySize && len(val) < maxValSize {
+	if len(key) > 0 && len(val) > 0 {
 		// initiates push request
 		request := new(PushPullRequest)
 		request.Operation = ">"
@@ -318,12 +301,12 @@ func (cache RemoteCache) AddValByKey(key string, val []byte) error {
 		request = nil
 		return nil
 	}
-	return errors.New("key or val exceeds size limit")
+	return errors.New("key or value are empty")
 }
 
 // creates pull request for the remoteCache instance
 func (cache RemoteCache) GetValByKey(key string) ([]byte, error) {
-	if len(key) < maxKeySize {
+	if len(key) > 0 {
 		// initiating pull request
 		request := new(PushPullRequest)
 		request.Key = key
@@ -347,11 +330,11 @@ func (cache RemoteCache) GetValByKey(key string) ([]byte, error) {
 		request = nil
 		return payload, nil
 	}
-	return []byte{}, errors.New("key exceeds size limit")
+	return []byte{}, errors.New("key is empty")
 }
 
 // creates pull request for the remoteCache instance
-func (cache RemoteCache) GetCountByIndex(index int) int {
+func (cache RemoteCache) GetCountByIndex(index int) (int, error) {
 	// initiating pull request
 	request := new(PushPullRequest)
 	request.QueueIndex = index
@@ -376,9 +359,9 @@ func (cache RemoteCache) GetCountByIndex(index int) int {
 	// converting payload to string to int (payload = count)
 	count, err := strconv.Atoi(string(payload))
 	if err != nil {
-		WarningLogger.Println(err)
+		return 0, err
 	}
-	return count
+	return count, nil
 }
 
 // creates pull request for the remoteCache instance

@@ -64,7 +64,11 @@ func countTestInstance(client cacheClient.RemoteCache) {
   i := 0
   for {
     i++
-    fmt.Println("count(reversed Index) "+strconv.Itoa(i) + ": " + strconv.Itoa(client.GetCountByIndex(i)))
+    count, err := client.GetCountByIndex(i)
+    if err != nil {
+      fmt.Println(err)
+    }
+    fmt.Println("count(reversed Index) "+strconv.Itoa(i) + ": " + strconv.Itoa(count))
     time.Sleep(1 * time.Millisecond)
   }
 }

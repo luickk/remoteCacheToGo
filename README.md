@@ -1,7 +1,7 @@
 # Remote Cache To Go
 
 This project creates a remote-database and an embedded-cache storage hybrid which enables live data synchronisation as well as encrypted and authorised data exchange.
-By maintaining go's idiomatic routine/ channel concept, concurrency is built into the program by design. No mutex and a package that reduces dependencies and synchronisation issues to zero.
+By maintaining go's idiomatic routine/ channel concept, concurrency is built into the program by design. No packages are used to reduce dependencies and complexity.
 
 ## Concept
 
@@ -9,7 +9,7 @@ All cache objects are referenced in the cache database but can also be implement
 
 ## Specifications
 
-The cacheMap is a simple map type object which is held in cache which enables fast and temporary data storage, exchange or buffering. The remote data transmission is done via. TCP sockets with a very simple protocol to minimize conflicts, tx comm size and to keep the bare-metal like simplicity of the package.
+The cacheMap is a simple map type object which is held in cache which enables fast and temporary data storage, exchange or buffering. The remote data transmission is done via. TCP sockets and the information is encoded in a null terminated json string. As a general delimiter to differentiate between the json strings a null byte is used.
 
 ## Features
 
@@ -27,6 +27,7 @@ Elements can be requested by the order they have been onto pushed
 
 Server:
 ``` go
+
 // creating new cache database
 cDb := cacheDb.New()
 
@@ -34,27 +35,35 @@ cDb := cacheDb.New()
 cDb.NewCache("test")
 cDb.NewCache("remote")
 
-// adding new entry to cache "test" at key "testkey" with val "test1"
-if cDb.AddValByKey("test", "testKey", []byte("test1")) {
-  fmt.Println("Written val to testKey")
+if err := cDb.Db["test"].AddValByKey("testKey", []byte("test1")); err != nil {
+  fmt.Println(err)
+  return
 }
 
+fmt.Println("Written val to testKey")
+
 // pulling data from cache "test" at key "testKey"
-fmt.Println("Requestd key: " + string(cDb.GetValByKey("test", "testKey")))
+res, err := cDb.Db["test"].GetValByKey("testKey")
+if err != nil {
+  fmt.Println(err)
+  return
+}
+fmt.Println("Requestd key: " + string(res))
+
+// creating unencrypted network interfce for cache with name "remote"
+cDb.Db["test"].RemoteConnHandler(8000)
 
 // creating encrypted network interface for cache with name "remote" and the password hash "test" and enabled dosProtection
 // serverCert & Key are passed hardcoded only for testing purposes
-cDb.Db["remote"].RemoteTlsConnHandler(8000, "test", true, serverCert, serverKey)
+cDb.Db["remote"].RemoteTlsConnHandler(8001, "test", true, serverCert, serverKey)
 
+}
 
-// creating unencrypted network interface for cache with name "remote"
-cDb.Db["remote"].RemoteConnHandler(8001)
 ```
-Client:
 ``` go
 // creates new cacheClient struct and connects to remoteCache instance
 // no tls encryption -> param3: false
-client, err := cacheClient.New("127.0.0.1", 8001, false, "", "")
+client, err := cacheClient.New("127.0.0.1", 8000, false, "", "")
 if err != nil {
   fmt.Println(err)
   return
@@ -63,36 +72,37 @@ if err != nil {
 // creates new cacheClient struct with TLS conn
 // params remote Cache IP, remote Cache port, wether connect with TLS encryption, root Cert for TLS encryption
 tlsClient, err := cacheClient.New("127.0.0.1", 8000, true, "test", rootCert)
+if err != nil {
+  fmt.Println(err)
+  return
+}
 
 // writing to connected cache to key "remote" with val "test1"
-client.AddValByKey("remote", []byte("test1"))
-
-i := 0
-for {
-  i++
-  // index 0 equals latest element pushed to the cache!
-  fmt.Println("index "+strconv.Itoa(i) + ": " + string(client.GetValByIndex(i)))
-  time.Sleep(1 * time.Millisecond)
-  if i >= 100 {
-    break
-  }
+if err := client.AddValByKey("remote", []byte("test1")); err != nil {
+  fmt.Println(err)
+  return
 }
+fmt.Println("Written val test1 to key remote")
+
+// requesting key value from connected cache from key "remote"
+res, err := client.GetValByKey("remote")
+if err != nil {
+  fmt.Println(err)
+  return
+}
+fmt.Println("Read val from key remote: "+string(res))
 
 ```
 
 ## Network communication protocol
 
-Protocol layout:
+json encoded (marshalled) struct:
 
-`{key}-{operation}-{payload}`
+`{{key}{operation}{payload}}`
 
 - key equals the key in the cache
 - operation can be either push or pull
 - payload is a byte array
-
-> Disclaimer
-> The protocol has not been pen tested and development has only been driven by the good intentions of the developer.
-> No guarantee for data loss or potential exploitation
 
 ## Sketch of routine layout
 

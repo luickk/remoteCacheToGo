@@ -223,7 +223,11 @@ func clientHandler(c net.Conn, cache Cache) {
 				// reply to pull-request from chacheClient by index
 				encodingPPR.Key = decodedPPR.Key
 				encodingPPR.Operation = ">c"
-				encodingPPR.Data = []byte(strconv.Itoa(cache.GetCountByIndex(index)))
+				count, err := cache.GetCountByIndex(index)
+				if err != nil {
+					WarningLogger.Println(err)
+				}
+				encodingPPR.Data = []byte(strconv.Itoa(count))
 				encodedPPR, err = util.EncodePushPullReq(encodingPPR)
 				if err != nil {
 					WarningLogger.Println(err)
@@ -367,7 +371,7 @@ func (cache Cache) GetValByKey(key string) ([]byte, error) {
 }
 
 // creates pull request for the remoteCache instance
-func (cache Cache) GetCountByIndex(index int) int {
+func (cache Cache) GetCountByIndex(index int) (int, error) {
 	// initiating pull request
 	request := new(PushPullRequest)
 	request.QueueIndex = index
@@ -395,13 +399,12 @@ func (cache Cache) GetCountByIndex(index int) int {
 		count, err = strconv.Atoi(string(payload))
 		if err != nil {
 			// queueindex begins at 1
-			WarningLogger.Println(err)
+			return 0, err
 		}
 	} else {
-		return 0
+		return 0, nil
 	}
-
-	return count
+	return count, nil
 }
 
 // creates pull request for the remoteCache instance
