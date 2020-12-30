@@ -60,6 +60,8 @@ cDb.Db["remote"].RemoteTlsConnHandler(8001, "test", true, serverCert, serverKey)
 }
 
 ```
+
+Client:
 ``` go
 // creates new cacheClient struct and connects to remoteCache instance
 // no tls encryption -> param3: false
