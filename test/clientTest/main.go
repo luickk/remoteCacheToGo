@@ -19,19 +19,27 @@ func main() {
   }
 
   // writing to connected cache to key "remote" with val "test1"
-  client.AddValByKey("remote", []byte("test1"))
+  if err := client.AddValByKey("remote", []byte("test1")); err != nil {
+    fmt.Println(err)
+    return
+  }
   fmt.Println("Written val test1 to key remote")
 
   // requesting key value from connected cache from key "remote"
-  fmt.Println("Read val from key remote: "+string(client.GetValByKey("remote")))
+  res, err := client.GetValByKey("remote")
+  if err != nil {
+    fmt.Println(err)
+    return
+  }
+  fmt.Println("Read val from key remote: "+string(res))
 
   // indexTestInstance(client)
   // countTestInstance(client)
   // indexKeyTestInstance(client)
 
   // starting testing routines
-  // go concurrentTestInstanceA(client)
-  // concurrentTestInstanceB(client)
+  go concurrentTestInstanceA(client)
+  concurrentTestInstanceB(client)
 }
 
 func indexTestInstance(client cacheClient.RemoteCache) {
@@ -66,7 +74,10 @@ func concurrentTestInstanceA(client cacheClient.RemoteCache) {
   i := 0
   for {
     i++
-    client.AddValByKey("remote"+strconv.Itoa(i), []byte("remote"+strconv.Itoa(i)))
+    if err := client.AddValByKey("remote"+strconv.Itoa(i), []byte("remote"+strconv.Itoa(i))); err != nil {
+      fmt.Println(err)
+      break
+    }
     time.Sleep(1 * time.Millisecond)
   }
 }
@@ -75,7 +86,12 @@ func concurrentTestInstanceB(client cacheClient.RemoteCache) {
   i := 0
   for {
     i++
-    fmt.Println("remote"+strconv.Itoa(i) + ": " + string(client.GetValByKey("remote"+strconv.Itoa(i))))
-    time.Sleep(10 * time.Millisecond)
+    res, err := client.GetValByKey("remote"+strconv.Itoa(i))
+    if err != nil {
+      fmt.Println(err)
+      break
+    }
+    fmt.Println("remote"+strconv.Itoa(i) + ": " + string(res))
+    time.Sleep(2 * time.Millisecond)
     }
 }

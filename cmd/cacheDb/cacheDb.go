@@ -10,25 +10,12 @@ type DbOp struct {
 	Val string
 }
 
-type CachePushPullRequest struct {
-	Operation string
-	CacheName string
-
-	Key string
-	ReturnPayload chan []byte
-	Data []byte
-}
-
 type CacheDb struct {
 	Db map[string]cache.Cache
 	DbOpCh chan *DbOp
-	CacheOpCh chan *CachePushPullRequest
-	CacheDbHandlerStarted bool
 }
 
-func (cacheDb CacheDb) CacheDbHandler(cacheDbOp chan *DbOp,  cacheOp chan *CachePushPullRequest) {
-	cacheDb.CacheDbHandlerStarted = true
-
+func (cacheDb CacheDb) CacheDbHandler(cacheDbOp chan *DbOp) {
 	for {
 		select {
 		case dbOp := <-cacheDbOp:
@@ -37,20 +24,13 @@ func (cacheDb CacheDb) CacheDbHandler(cacheDbOp chan *DbOp,  cacheOp chan *Cache
 			} else if dbOp.Operation == "remove" { // push operation
 				delete(cacheDb.Db, dbOp.Val)
 			}
-		case cOp := <-cacheOp:
-			if cOp.Operation == "add" {
-				cacheDb.Db[cOp.CacheName].AddValByKey(cOp.Key, cOp.Data)
-			} else if cOp.Operation == "get" {
-				cOp.ReturnPayload <- cacheDb.Db[cOp.CacheName].GetValByKey(cOp.Key)
-			}
-		}
-	}
+  	}
+  }
 }
 
 func New() CacheDb {
-  cacheDb := CacheDb{make(map[string]cache.Cache), make(chan *DbOp), make(chan *CachePushPullRequest), false}
-	cacheDb.CacheDbHandlerStarted = false
-	go cacheDb.CacheDbHandler(cacheDb.DbOpCh, cacheDb.CacheOpCh)
+  cacheDb := CacheDb{ make(map[string]cache.Cache), make(chan *DbOp) }
+	go cacheDb.CacheDbHandler(cacheDb.DbOpCh)
   return cacheDb
 }
 
@@ -78,47 +58,4 @@ func (cacheDb CacheDb) RemoveCache(cacheName string) {
 
   	request = nil
   }
-}
-
-func (cacheDb CacheDb) AddValByKey(cacheName string, key string, val []byte) bool {
-  if util.CharacterWhiteList(key) {
-  	request := new(CachePushPullRequest)
-  	request.Operation = "add"
-  	request.CacheName = cacheName
-  	request.Key = key
-  	request.Data = val
-
-    cacheDb.CacheOpCh <- request
-
-  	request = nil
-    return true
-  }
-  return false
-}
-
-func (cacheDb CacheDb) GetValByKey(cacheName string, key string) []byte {
-  if util.CharacterWhiteList(key) {
-  	request := new(CachePushPullRequest)
-  	request.Operation = "get"
-  	request.CacheName = cacheName
-  	request.Key = key
-  	request.ReturnPayload = make(chan []byte)
-
-  	cacheDb.CacheOpCh <- request
-
-  	reply := false
-  	payload := []byte{}
-
-  	// waiting for request to be processed and retrieval of payload
-  	for !reply {
-  		select {
-  		case liveDataRes := <-request.ReturnPayload:
-  			payload = liveDataRes
-  			reply = true
-  			break
-  		}
-  	}
-    return payload
-  }
-  return []byte{}
 }

@@ -17,27 +17,34 @@ func main() {
   cDb.NewCache("test")
   cDb.NewCache("remote")
 
-  // adding new entry to cache "test" at key "testkey" with val "test1"
-  if cDb.AddValByKey("test", "testKey", []byte("test1")) {
-    fmt.Println("Written val to testKey")
+  if err := cDb.Db["test"].AddValByKey("testKey", []byte("test1")); err != nil {
+    fmt.Println(err)
+    return
   }
 
+  fmt.Println("Written val to testKey")
+
   // pulling data from cache "test" at key "testKey"
-  fmt.Println("Requestd key: "+string(cDb.GetValByKey("test", "testKey")))
+  res, err := cDb.Db["test"].GetValByKey("testKey")
+  if err != nil {
+    fmt.Println(err)
+    return
+  }
+  fmt.Println("Requestd key: " + string(res))
 
   // creating unencrypted network interfce for cache with name "remote"
   cDb.Db["remote"].RemoteConnHandler(8000)
 
   // runing test instances
-  go concurrentTestInstanceA(cDb)
-  concurrentTestInstanceB(cDb)
+  // go concurrentTestInstanceA(cDb)
+  // concurrentTestInstanceB(cDb)
 }
 
 func concurrentTestInstanceA(cDb cacheDb.CacheDb) {
   i := 0
   for {
     i++
-    cDb.AddValByKey("test", "test"+strconv.Itoa(i), []byte("test"+strconv.Itoa(i)))
+    cDb.Db["test"].AddValByKey("test"+strconv.Itoa(i), []byte("test"+strconv.Itoa(i)))
   }
 }
 
@@ -45,8 +52,16 @@ func concurrentTestInstanceB(cDb cacheDb.CacheDb) {
   i := 0
   for {
     i++
-    fmt.Println("test"+strconv.Itoa(i) + ": " + string(cDb.GetValByKey("test", "test"+strconv.Itoa(i))))
-    fmt.Println("remote: "+string(cDb.GetValByKey("remote", "remote")))
+    res, err := cDb.Db["test"].GetValByKey("test"+strconv.Itoa(i))
+    if err != nil {
+      fmt.Println(err)
+    }
+    fmt.Println("test"+strconv.Itoa(i) + ": " + string(res))
+    res, err = cDb.Db["remote"].GetValByKey("remote"+strconv.Itoa(i))
+    if err != nil {
+      fmt.Println(err)
+    }
+    fmt.Println("remote: "+string(res))
     time.Sleep(10 * time.Millisecond)
     }
 }

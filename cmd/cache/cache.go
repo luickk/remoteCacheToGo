@@ -4,11 +4,12 @@ import (
 	"net"
 	"log"
 	"bufio"
-	"bytes"
+	"errors"
 	"strconv"
 	"strings"
 	"crypto/tls"
 	"os"
+	"time"
 
   "remoteCacheToGo/pkg/util"
   "remoteCacheToGo/pkg/goDosProtection"
@@ -29,7 +30,6 @@ type Cache struct {
 	// actual cache, holding all the data in memory
 	cacheMem map[string]*CacheVal
 	PushPullRequestCh chan *PushPullRequest
-	CacheHandlerStarted bool
 }
 
 // required since the queueIndex is also in the cache map key
@@ -40,6 +40,8 @@ type CacheVal struct {
 
 // tcpConnBuffer defines the buffer size of the TCP conn reader
 var tcpConnBuffer = 2048
+var maxKeySize = 500
+var maxValSize = 500
 
 // defining different levels of loggers
 var (
@@ -52,7 +54,7 @@ var (
 // aka. pushPullRequestHandler
 func (cache Cache) CacheHandler() {
 	var queueIndex int = 1
-	cache.CacheHandlerStarted = true
+	time.Sleep(1*time.Millisecond)
 	for {
 		select {
 		case ppCacheOp := <-cache.PushPullRequestCh:
@@ -154,102 +156,89 @@ func (cache Cache) CacheHandler() {
 // hanles all operations on connection object
 func clientHandler(c net.Conn, cache Cache) {
 	InfoLogger.Printf("New client connected to %s \n", c.RemoteAddr().String())
-	for {
-		netData := make([]byte, tcpConnBuffer)
-		n, err := bufio.NewReader(c).Read(netData)
-		if err != nil {
-			ErrorLogger.Println(err)
-			return
-		}
-		netData = netData[:n]
 
-		// splitting data to prevent buffer overflow confusion
-		netDataSeperated := bytes.Split(netData, []byte("\rnr"))
+	var encodedPPR []byte
+	var err error
+	decodedPPR := new(util.SPushPullReq)
+	encodingPPR := new(util.SPushPullReq)
+	reader := bufio.NewReader(c)
+	netDataBuffer := make([]byte, tcpConnBuffer)
+	for {
+		netDataBuffer, err = reader.ReadBytes(0x0)
 		if err != nil {
 			WarningLogger.Println(err)
-			return
+			break
 		}
-
-		var encodedPPR []byte
-		decodedPPR := new(util.SPushPullReq)
-		encodingPPR := new(util.SPushPullReq)
-		// iterating over data seperated by delimiter
-		for _, data := range netDataSeperated {
-			if len(data) >= 1 {
-						if err := util.DecodePushPullReq(decodedPPR, data); err != nil {
-							WarningLogger.Println(err)
-						}
-						switch decodedPPR.Operation {
-						case ">":
-							encodingPPR.Key = decodedPPR.Key
-							encodingPPR.Operation = ">"
-							encodingPPR.Data = cache.GetValByKey(decodedPPR.Key)
-							encodedPPR, err = util.EncodePushPullReq(encodingPPR)
-							if err != nil {
-								WarningLogger.Println(err)
-							}
-							padded := util.Padd(tcpConnBuffer, encodedPPR)
-							if len(padded) != 0 {
-								InfoLogger.Println(len(encodedPPR))
-								InfoLogger.Println(len(padded))
-								// reply to pull-request from chacheClient by key
-								c.Write(padded)
-							}
-							padded = nil
-						case ">i":
-							index, err := strconv.Atoi(decodedPPR.Key)
-							if err != nil {
-								WarningLogger.Println(err)
-							}
-							// reply to pull-request from chacheClient by index
-							encodingPPR.Key = decodedPPR.Key
-							encodingPPR.Operation = ">i"
-							encodingPPR.Data = cache.GetValByIndex(index)
-							encodedPPR, err = util.EncodePushPullReq(encodingPPR)
-							if err != nil {
-								WarningLogger.Println(err)
-							}
-							// reply to pull-request from chacheClient by key
-							c.Write(append(encodedPPR, []byte("\rnr")...))
-						case ">ik":
-							index, err := strconv.Atoi(decodedPPR.Key)
-							if err != nil {
-								WarningLogger.Println(err)
-							}
-							// reply to pull-request from chacheClient by index
-							encodingPPR.Key = decodedPPR.Key
-							encodingPPR.Operation = ">ik"
-							encodingPPR.Data = []byte(cache.GetKeyByIndex(index))
-							encodedPPR, err = util.EncodePushPullReq(encodingPPR)
-							if err != nil {
-								WarningLogger.Println(err)
-							}
-							// reply to pull-request from chacheClient by key
-							c.Write(append(encodedPPR, []byte("\rnr")...))
-						case ">c":
-							index, err := strconv.Atoi(decodedPPR.Key)
-							if err != nil {
-								WarningLogger.Println(err)
-							}
-							// reply to pull-request from chacheClient by index
-							encodingPPR.Key = decodedPPR.Key
-							encodingPPR.Operation = ">c"
-							encodingPPR.Data = []byte(strconv.Itoa(cache.GetCountByIndex(index)))
-							encodedPPR, err = util.EncodePushPullReq(encodingPPR)
-							if err != nil {
-								WarningLogger.Println(err)
-							}
-							// reply to pull-request from chacheClient by key
-							c.Write(append(encodedPPR, []byte("\rnr")...))
-						case "<":
-							// writing push-request from client to cache
-							cache.AddValByKey(decodedPPR.Key, decodedPPR.Data)
-						default:
-								WarningLogger.Println("Parsing Error")
-						}
+		netDataBuffer = netDataBuffer[:len(netDataBuffer)-1]
+		if len(netDataBuffer) > 0 {
+			if err = util.DecodePushPullReq(decodedPPR, netDataBuffer); err != nil {
+				WarningLogger.Println(err)
+			}
+			switch decodedPPR.Operation {
+			case ">":
+				encodingPPR.Key = decodedPPR.Key
+				encodingPPR.Operation = ">"
+				encodingPPR.Data, err = cache.GetValByKey(decodedPPR.Key)
+				if err != nil {
+					WarningLogger.Println(err)
 				}
+				encodedPPR, err = util.EncodePushPullReq(encodingPPR)
+				if err != nil {
+					WarningLogger.Println(err)
+				}
+				c.Write(append(encodedPPR, []byte{0x0}...))
+			case ">i":
+				index, err := strconv.Atoi(decodedPPR.Key)
+				if err != nil {
+					WarningLogger.Println(err)
+				}
+				// reply to pull-request from chacheClient by index
+				encodingPPR.Key = decodedPPR.Key
+				encodingPPR.Operation = ">i"
+				encodingPPR.Data = cache.GetValByIndex(index)
+				encodedPPR, err = util.EncodePushPullReq(encodingPPR)
+				if err != nil {
+					WarningLogger.Println(err)
+				}
+				c.Write(append(encodedPPR, []byte{0x0}...))
+			case ">ik":
+				index, err := strconv.Atoi(decodedPPR.Key)
+				if err != nil {
+					WarningLogger.Println(err)
+				}
+				// reply to pull-request from chacheClient by index
+				encodingPPR.Key = decodedPPR.Key
+				encodingPPR.Operation = ">ik"
+				encodingPPR.Data = []byte(cache.GetKeyByIndex(index))
+				encodedPPR, err = util.EncodePushPullReq(encodingPPR)
+				if err != nil {
+					WarningLogger.Println(err)
+				}
+				c.Write(append(encodedPPR, []byte{0x0}...))
+			case ">c":
+				index, err := strconv.Atoi(decodedPPR.Key)
+				if err != nil {
+					WarningLogger.Println(err)
+				}
+				// reply to pull-request from chacheClient by index
+				encodingPPR.Key = decodedPPR.Key
+				encodingPPR.Operation = ">c"
+				encodingPPR.Data = []byte(strconv.Itoa(cache.GetCountByIndex(index)))
+				encodedPPR, err = util.EncodePushPullReq(encodingPPR)
+				if err != nil {
+					WarningLogger.Println(err)
+				}
+				c.Write(append(encodedPPR, []byte{0x0}...))
+			case "<":
+				// writing push-request from client to cache
+				if err := cache.AddValByKey(decodedPPR.Key, decodedPPR.Data); err != nil {
+					WarningLogger.Println(err)
+				}
+			default:
+					WarningLogger.Println("Parsing Error")
 			}
 		}
+	}
 }
 
 // provides network interface for given cache
@@ -318,9 +307,7 @@ func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, dosProtection b
 // initiating new cache struct
 func New() Cache {
 	// initiating cache struct
-  cache := Cache{ make(map[string]*CacheVal), make(chan *PushPullRequest), false }
-	// updating cacheHandler state
-	cache.CacheHandlerStarted = false
+  cache := Cache{ make(map[string]*CacheVal), make(chan *PushPullRequest) }
 
 	// initiating different logger
 	InfoLogger = log.New(os.Stdout, "[NODE] INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
@@ -335,9 +322,8 @@ func New() Cache {
 
 // adds key value to remote cache
 // (can also overwrite/ replace)
-func (cache Cache) AddValByKey(key string, val []byte) bool {
-	// checking if inserting key data contains unallowed characters
-  if util.CharacterWhiteList(key) {
+func (cache Cache) AddValByKey(key string, val []byte) error {
+  if len(key) < maxKeySize && len(val) < maxValSize {
 		// initiates push request
 		request := new(PushPullRequest)
 		request.Key = key
@@ -347,15 +333,14 @@ func (cache Cache) AddValByKey(key string, val []byte) bool {
 	  cache.PushPullRequestCh <- request
 
 		request = nil
-		return true
+		return nil
 	}
-	return false
+	return errors.New("key or val size exceeds limit")
 }
 
 // creates pull request for the remoteCache instance
-func (cache Cache) GetValByKey(key string) []byte {
-	// checking if inserting key data contains unallowed characters to block unnecessary request
-  if util.CharacterWhiteList(key) {
+func (cache Cache) GetValByKey(key string) ([]byte, error) {
+  if len(key) < maxKeySize {
 		// initiating pull request
 		request := new(PushPullRequest)
 		request.Key = key
@@ -376,9 +361,9 @@ func (cache Cache) GetValByKey(key string) []byte {
 			}
 		}
 		request = nil
-		return payload
+		return payload, nil
 	}
-	return []byte{}
+	return []byte{}, errors.New("key size exceeds limit")
 }
 
 // creates pull request for the remoteCache instance
