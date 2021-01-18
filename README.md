@@ -46,8 +46,6 @@ remoteCache.RemoteConnHandler(8000)
 // serverCert & Key are passed hardcoded only for testing purposes
 remoteCache.RemoteTlsConnHandler(8001, "test", true, serverCert, serverKey)
 
-}
-
 ```
 
 Client:
@@ -77,7 +75,7 @@ fmt.Println("Read val from key remote: "+string(res))
 
 ```
 
-#### Comm Protocol
+## Comm Protocol
 
 Communication happens by json marshalling a predefined struct (SPushPullReq struct) and unmarshalling it on the receiver side.
 The marsahlled byte arrays are exchanged via. a field length framed tcp connection.
