@@ -2,9 +2,9 @@ package util
 
 import (
   "encoding/json"
-	"unicode"
-  "errors"
-  "bytes"
+  "io"
+  "bufio"
+  "net"
   "encoding/binary"
 )
 
@@ -15,32 +15,23 @@ type SPushPullReq struct {
 	Data []byte
 }
 
-func EncodePushPullReq(sPushPullReq *SPushPullReq) ([]byte, error) {
-	serializedPPR, err := json.Marshal(&sPushPullReq)
+func EncodeMsg(msg *SPushPullReq) ([]byte, error) {
+	serializedMsg, err := json.Marshal(&msg)
 	if err != nil {
 		return []byte{}, err
 	}
-	return serializedPPR, nil
+	return serializedMsg, nil
 }
 
 
-func DecodePushPullReq(ppr *SPushPullReq, data []byte) error {
-	err := json.Unmarshal(data, ppr)
+func DecodeMsg(msg *SPushPullReq, data []byte) error {
+	err := json.Unmarshal(data, msg)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-// checks wether input consists only of characters
-func CharacterWhiteList(input string) bool {
-    for _, r := range input {
-        if unicode.IsLetter(r) || unicode.IsNumber(r) {
-            return true
-        }
-    }
-    return false
-}
 
 // slice operation
 // from https://stackoverflow.com/questions/8307478/how-to-find-out-element-position-in-slice
@@ -53,28 +44,40 @@ func Index(limit int, predicate func(i int) bool) int {
     return -1
 }
 
-func Padd(paddSize int, inp []byte) []byte {
-  if len(inp) > paddSize {
-    return []byte{}
-  }
-  padded := make([]byte, paddSize-len(inp))
-  return append(inp, padded...)
+func WriteFrame(writer *bufio.Writer, data []byte) error {
+	dataLen := make([]byte, 8)
+	binary.LittleEndian.PutUint64(dataLen, uint64(len(data)))
+	_, err := writer.Write(dataLen)
+	if err != nil {
+		return err
+	}
+	_, err = writer.Write(data)
+	if err != nil {
+		return err
+	}
+	writer.Flush()
+	return nil
 }
 
-func RemovePadding(inp []byte, fixedHeaderSize int) ([]byte, error) {
-  if len (inp) > 0 {
-    // since json string are null byte terminatee we can just trim all null bytes
-    return  bytes.Trim(inp, "\x00"), nil
-  } else {
-    return []byte{}, errors.New("input not large enough")
-  }
+func readFixedSize(r io.Reader, len int) (b []byte, err error) {
+    b = make([]byte, len)
+    _, err = io.ReadFull(r, b)
+    if err != nil {
+        return
+    }
+    return
 }
 
-func readInt64(b []byte) (int64, error) {
-  buf := bytes.NewBuffer(b)
-  res, err := binary.ReadVarint(buf)
-  if err != nil {
-    return 0, err
-  }
-  return res, nil
+func ReadFrame(conn net.Conn) ([]byte, error) {
+	lenData, err := readFixedSize(conn, 8)
+	if err != nil {
+		return []byte{}, err
+	}
+	dataLen := binary.LittleEndian.Uint64(lenData)
+
+	dataBuffer, err := readFixedSize(conn, int(dataLen))
+	if err != nil {
+		return []byte{}, err
+	}
+	return dataBuffer, nil
 }

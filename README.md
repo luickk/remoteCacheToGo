@@ -15,11 +15,11 @@ The cacheMap is a simple map type object which is held in cache which enables fa
 
 - concurrency by go idiomacy
 - local key/ val cache
-Caches can be used only in a local scope
+the cache can only be used in a local program context
 - remote key/ val cache  <br>
-Every cache in the cache database can be made remotely accessible individually
+the cache can be made accessible via tcp conn. either encrypted(tls) or unencrypted
 - key/val cache can be used as queue <br>
-Elements can be requested by the order they have been onto pushed
+Elements can be requested by the order(index or count) they have been pushed to the cache
 
 
 ## Example
@@ -29,33 +29,22 @@ Server:
 ``` go
 
 // creating new cache database
-cDb := cacheDb.New()
+remoteCache := cache.New()
 
-// creating new caches in database
-cDb.NewCache("test")
-cDb.NewCache("remote")
-
-if err := cDb.Db["test"].AddValByKey("testKey", []byte("test1")); err != nil {
-  fmt.Println(err)
-  return
-}
+remoteCache.AddValByKey("testKey", []byte("test1"))
 
 fmt.Println("Written val to testKey")
 
 // pulling data from cache "test" at key "testKey"
-res, err := cDb.Db["test"].GetValByKey("testKey")
-if err != nil {
-  fmt.Println(err)
-  return
-}
+res := remoteCache.GetValByKey("testKey")
 fmt.Println("Requestd key: " + string(res))
 
 // creating unencrypted network interfce for cache with name "remote"
-cDb.Db["test"].RemoteConnHandler(8000)
+remoteCache.RemoteConnHandler(8000)
 
 // creating encrypted network interface for cache with name "remote" and the password hash "test" and enabled dosProtection
 // serverCert & Key are passed hardcoded only for testing purposes
-cDb.Db["remote"].RemoteTlsConnHandler(8001, "test", true, serverCert, serverKey)
+remoteCache.RemoteTlsConnHandler(8001, "test", true, serverCert, serverKey)
 
 }
 
@@ -66,14 +55,6 @@ Client:
 // creates new cacheClient struct and connects to remoteCache instance
 // no tls encryption -> param3: false
 client, err := cacheClient.New("127.0.0.1", 8000, false, "", "")
-if err != nil {
-  fmt.Println(err)
-  return
-}
-
-// creates new cacheClient struct with TLS conn
-// params remote Cache IP, remote Cache port, wether connect with TLS encryption, root Cert for TLS encryption
-tlsClient, err := cacheClient.New("127.0.0.1", 8000, true, "test", rootCert)
 if err != nil {
   fmt.Println(err)
   return
@@ -96,15 +77,22 @@ fmt.Println("Read val from key remote: "+string(res))
 
 ```
 
-## Network communication protocol
+#### Comm Protocol
 
-json encoded (marshalled) struct:
+Communication happens by json marshalling a predefined struct (SPushPullReq struct) and unmarshalling it on the receiver side.
+The marsahlled byte arrays are exchanged via. a field length framed tcp connection.
+`<8 byte 64 bit unsigned integer containing the data field length><data>`
 
-`{{key}{operation}{payload}}`
-
-- key equals the key in the cache
-- operation can be either push or pull
-- payload is a byte array
+The marshalled struct:
+``` go
+type SPushPullReq struct {
+	Type string
+	Name string
+	Id int
+	Operation string
+	Payload []byte
+}
+```
 
 ## Sketch of routine layout
 
