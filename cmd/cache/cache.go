@@ -19,13 +19,25 @@ type PushPullRequest struct {
 
 	ReturnPayload chan []byte
 	Data []byte
+
+	ClientWriter *bufio.Writer
+}
+
+// describes a single client write request
+// exists to forward client write requests form the handlers to the clientWrite handler via a channel
+type clientWriteRequest struct {
+	receivingClient *bufio.Writer
+	data []byte
 }
 
 // stores all important data for cache
 type Cache struct {
 	// actual cache, holding all the data in memory
 	cacheMem map[string]*CacheVal
+
 	PushPullRequestCh chan *PushPullRequest
+	subscribedClients []*bufio.Writer
+	clientWriteRequestCh chan *clientWriteRequest
 }
 
 // required since the queueIndex is also in the cache map key
@@ -40,7 +52,12 @@ var tcpConnBuffer = 2048
 // handles all requests to actual memory operations an the cache map
 // aka. pushPullRequestHandler
 func (cache Cache) CacheHandler() {
-	var queueIndex int = 1
+	var (
+		err error
+		queueIndex int = 1
+		encodedPPR []byte
+	)
+	encodingPPR := new(util.SPushPullReq)
 	for {
 		select {
 		case ppCacheOp := <-cache.PushPullRequestCh:
@@ -57,16 +74,32 @@ func (cache Cache) CacheHandler() {
 					}
 				// if it does, given data is written to key loc
 				} else if len(ppCacheOp.Data) > 0 { // push operation
+
+					for _, writer := range cache.subscribedClients {
+						encodingPPR.Key = ppCacheOp.Key
+						encodingPPR.Operation = ">s"
+						encodingPPR.Data = ppCacheOp.Data
+						encodedPPR, err = util.EncodeMsg(encodingPPR)
+						if err != nil {
+							return
+						}
+
+						cache.clientWriteRequestCh <- &clientWriteRequest { writer, encodedPPR }
+					}
+
 					val := new(CacheVal)
 					val.QueueIndex = queueIndex
 					val.Data = ppCacheOp.Data
 					cache.cacheMem[ppCacheOp.Key] = val
+
 					// increasing queueIndex (count)
 					queueIndex++
 				}
 			case ">i":
-				var found bool
-				var reversedReqIndex int
+				var (
+					found bool
+					reversedReqIndex int
+				)
 				// Iterate over cacheMem CacheVal which stores queue index
 				for _, data := range cache.cacheMem {
 					if !(ppCacheOp.QueueIndex > len(cache.cacheMem)) {
@@ -87,8 +120,10 @@ func (cache Cache) CacheHandler() {
 					ppCacheOp.ReturnPayload <- []byte{}
 				}
 			case ">ik":
-				var found bool
-				var reversedReqIndex int
+				var (
+					found bool
+					reversedReqIndex int
+				)
 				// Iterate over cacheMem CacheVal which stores queue index
 				for key, data := range cache.cacheMem {
 					if !(ppCacheOp.QueueIndex > len(cache.cacheMem)) {
@@ -109,8 +144,10 @@ func (cache Cache) CacheHandler() {
 					ppCacheOp.ReturnPayload <- []byte{}
 				}
 			case ">c":
-				var found bool
-				var reversedReqIndex int
+				var (
+					found bool
+					reversedReqIndex int
+				)
 				for _, data := range cache.cacheMem {
 					// checking if request index is within the "index-space" of the cache-map
 					if !(ppCacheOp.QueueIndex > len(cache.cacheMem)) {
@@ -131,6 +168,9 @@ func (cache Cache) CacheHandler() {
 					// returning zero bytes if if there is no matching index
 					ppCacheOp.ReturnPayload <- []byte{}
 				}
+			case ">s":
+				// reply to pull-request from chacheClient by index
+				cache.subscribedClients = append(cache.subscribedClients, ppCacheOp.ClientWriter)
 			}
 		}
 	}
@@ -140,7 +180,7 @@ func (cache Cache) CacheHandler() {
 // client handler, handles connected client sessions
 // parses all incoming data
 // hanles all operations on connection object
-func clientHandler(c net.Conn, cache Cache) {
+func (cache Cache)clientHandler(c net.Conn) {
 	var encodedPPR []byte
 	var err error
 	writer := bufio.NewWriter(c)
@@ -215,6 +255,12 @@ func clientHandler(c net.Conn, cache Cache) {
 				return
 			}
 			util.WriteFrame(writer, encodedPPR)
+		case ">s":
+			request := new(PushPullRequest)
+			request.Operation = ">s"
+			request.ClientWriter = writer
+			cache.PushPullRequestCh <- request
+			request = nil
 		case "<":
 			// writing push-request from client to cache
 			cache.AddValByKey(decodedPPR.Key, decodedPPR.Data)
@@ -239,7 +285,19 @@ func (cache Cache) RemoteConnHandler(port int) {
 		if err != nil {
 			return
 		}
-		go clientHandler(c, cache)
+		go cache.clientHandler(c)
+	}
+}
+
+// clientWriteRequestHandler handles all write request to clients
+func (cache Cache)clientWriteRequestHandler() {
+	for {
+		select {
+		case writeRequest := <-cache.clientWriteRequestCh:
+			if err := util.WriteFrame(writeRequest.receivingClient, writeRequest.data); err != nil {
+				return
+			}
+		}
 	}
 }
 
@@ -275,7 +333,7 @@ func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, dosProtection b
 
 		// client is not banned
 		if !dosProt.Client(strings.Split(c.RemoteAddr().String(), ":")[0]) || !dosProtection {
-			go clientHandler(c, cache)
+			go cache.clientHandler(c)
 		// client is banned
 		} else {
 
@@ -286,7 +344,7 @@ func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, dosProtection b
 // initiating new cache struct
 func New() Cache {
 	// initiating cache struct
-  cache := Cache{ make(map[string]*CacheVal), make(chan *PushPullRequest) }
+  cache := Cache{ make(map[string]*CacheVal), make(chan *PushPullRequest), []*bufio.Writer{}, make(chan *clientWriteRequest)}
 
 	// starting cache handler to allow for concurrent memory(cache map) operations
 	go cache.CacheHandler()
