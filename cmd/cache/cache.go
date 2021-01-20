@@ -74,7 +74,6 @@ func (cache Cache) CacheHandler() {
 					}
 				// if it does, given data is written to key loc
 				} else if len(ppCacheOp.Data) > 0 { // push operation
-
 					for _, writer := range cache.subscribedClients {
 						encodingPPR.Key = ppCacheOp.Key
 						encodingPPR.Operation = ">s"
@@ -83,7 +82,6 @@ func (cache Cache) CacheHandler() {
 						if err != nil {
 							return
 						}
-
 						cache.clientWriteRequestCh <- &clientWriteRequest { writer, encodedPPR }
 					}
 
@@ -208,7 +206,7 @@ func (cache Cache)clientHandler(c net.Conn) {
 			if err != nil {
 				return
 			}
-			util.WriteFrame(writer, encodedPPR)
+			cache.clientWriteRequestCh <- &clientWriteRequest { writer, encodedPPR }
 		case ">i":
 			index, err := strconv.Atoi(decodedPPR.Key)
 			if err != nil {
@@ -222,7 +220,7 @@ func (cache Cache)clientHandler(c net.Conn) {
 			if err != nil {
 				return
 			}
-			util.WriteFrame(writer, encodedPPR)
+			cache.clientWriteRequestCh <- &clientWriteRequest { writer, encodedPPR }
 		case ">ik":
 			index, err := strconv.Atoi(decodedPPR.Key)
 			if err != nil {
@@ -236,7 +234,7 @@ func (cache Cache)clientHandler(c net.Conn) {
 			if err != nil {
 				return
 			}
-			util.WriteFrame(writer, encodedPPR)
+			cache.clientWriteRequestCh <- &clientWriteRequest { writer, encodedPPR }
 		case ">c":
 			index, err := strconv.Atoi(decodedPPR.Key)
 			if err != nil {
@@ -254,7 +252,7 @@ func (cache Cache)clientHandler(c net.Conn) {
 			if err != nil {
 				return
 			}
-			util.WriteFrame(writer, encodedPPR)
+			cache.clientWriteRequestCh <- &clientWriteRequest { writer, encodedPPR }
 		case ">s":
 			request := new(PushPullRequest)
 			request.Operation = ">s"
@@ -348,6 +346,7 @@ func New() Cache {
 
 	// starting cache handler to allow for concurrent memory(cache map) operations
 	go cache.CacheHandler()
+	go cache.clientWriteRequestHandler()
   return cache
 }
 

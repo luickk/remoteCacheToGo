@@ -33,16 +33,27 @@ func main() {
   }
   fmt.Println("Read val from key remote: "+string(res))
 
-  // indexTestInstance(client)
-  // countTestInstance(client)
-  // indexKeyTestInstance(client)
+  // indexTest(client)
+  // countTest(client)
+  // indexKeyTest(client)
 
   // starting testing routines
-  go concurrentTestInstanceA(client)
-  concurrentTestInstanceB(client)
+  subscriptionTest(client)
+  // concurrentWriteTest(client)
+  // concurrentGetTest(client)
 }
 
-func indexTestInstance(client cacheClient.RemoteCache) {
+func subscriptionTest(client cacheClient.RemoteCache) {
+  sCh := client.Subscribe()
+  for {
+    select {
+    case res := <-sCh:
+      fmt.Println(string(res))
+    }
+  }
+}
+
+func indexTest(client cacheClient.RemoteCache) {
   i := 0
   for {
     i++
@@ -51,7 +62,7 @@ func indexTestInstance(client cacheClient.RemoteCache) {
   }
 }
 
-func indexKeyTestInstance(client cacheClient.RemoteCache) {
+func indexKeyTest(client cacheClient.RemoteCache) {
   i := 0
   for {
     i++
@@ -60,7 +71,7 @@ func indexKeyTestInstance(client cacheClient.RemoteCache) {
   }
 }
 
-func countTestInstance(client cacheClient.RemoteCache) {
+func countTest(client cacheClient.RemoteCache) {
   i := 0
   for {
     i++
@@ -74,7 +85,7 @@ func countTestInstance(client cacheClient.RemoteCache) {
 }
 
 
-func concurrentTestInstanceA(client cacheClient.RemoteCache) {
+func concurrentWriteTest(client cacheClient.RemoteCache) {
   i := 0
   for {
     i++
@@ -86,7 +97,7 @@ func concurrentTestInstanceA(client cacheClient.RemoteCache) {
   }
 }
 
-func concurrentTestInstanceB(client cacheClient.RemoteCache) {
+func concurrentGetTest(client cacheClient.RemoteCache) {
   i := 0
   for {
     i++

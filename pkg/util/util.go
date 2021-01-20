@@ -36,12 +36,12 @@ func DecodeMsg(msg *SPushPullReq, data []byte) error {
 // slice operation
 // from https://stackoverflow.com/questions/8307478/how-to-find-out-element-position-in-slice
 func Index(limit int, predicate func(i int) bool) int {
-    for i := 0; i < limit; i++ {
-        if predicate(i) {
-            return i
-        }
-    }
-    return -1
+  for i := 0; i < limit; i++ {
+      if predicate(i) {
+          return i
+      }
+  }
+  return -1
 }
 
 func WriteFrame(writer *bufio.Writer, data []byte) error {

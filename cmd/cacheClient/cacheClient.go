@@ -108,6 +108,11 @@ func connHandler(conn net.Conn, cacheRequestReply chan *PushPullRequest) {
 			request.QueueIndex, _ = strconv.Atoi(decodedPPR.Key)
 			request.Data = decodedPPR.Data
 			cacheRequestReply <- request
+		case ">s":
+			request.Operation = ">s"
+			request.Key = decodedPPR.Key
+			request.Data = decodedPPR.Data
+			cacheRequestReply <- request
 		}
 	}
 }
@@ -158,43 +163,53 @@ func (cache RemoteCache) pushPullRequestHandler() {
 						}
 						util.WriteFrame(writer, encodedPPR)
 					}
-			case ">i":
-				// adding request to cache-operation-buffer to assign it later to incoming request-reply
-				ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
-				// sending request to remoteCache instance
-				encodingPPR.Key = strconv.Itoa(ppCacheOp.QueueIndex)
-				encodingPPR.Operation = ">i"
-				encodingPPR.Data = []byte{}
-				encodedPPR, err = util.EncodeMsg(encodingPPR)
-				if err != nil {
-					return
+				case ">i":
+					// adding request to cache-operation-buffer to assign it later to incoming request-reply
+					ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
+					// sending request to remoteCache instance
+					encodingPPR.Key = strconv.Itoa(ppCacheOp.QueueIndex)
+					encodingPPR.Operation = ">i"
+					encodingPPR.Data = []byte{}
+					encodedPPR, err = util.EncodeMsg(encodingPPR)
+					if err != nil {
+						return
+					}
+					util.WriteFrame(writer, encodedPPR)
+				case ">ik":
+					// adding request to cache-operation-buffer to assign it later to incoming request-reply
+					ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
+					// sending request to remoteCache instance
+					encodingPPR.Key = strconv.Itoa(ppCacheOp.QueueIndex)
+					encodingPPR.Operation = ">ik"
+					encodingPPR.Data = []byte{}
+					encodedPPR, err = util.EncodeMsg(encodingPPR)
+					if err != nil {
+						return
+					}
+					util.WriteFrame(writer, encodedPPR)
+				case ">c":
+					// adding request to cache-operation-buffer to assign it later to incoming request-reply
+					ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
+					// sending request to remoteCache instance
+					encodingPPR.Key = strconv.Itoa(ppCacheOp.QueueIndex)
+					encodingPPR.Operation = ">c"
+					encodingPPR.Data = []byte{}
+					encodedPPR, err = util.EncodeMsg(encodingPPR)
+					if err != nil {
+						return
+					}
+					util.WriteFrame(writer, encodedPPR)
+				case ">s":
+					// adding request to cache-operation-buffer to assign it later to incoming request-reply
+					ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
+					// sending request to remoteCache instance
+					encodingPPR.Operation = ">s"
+					encodedPPR, err = util.EncodeMsg(encodingPPR)
+					if err != nil {
+						return
+					}
+					util.WriteFrame(writer, encodedPPR)
 				}
-				util.WriteFrame(writer, encodedPPR)
-			case ">ik":
-				// adding request to cache-operation-buffer to assign it later to incoming request-reply
-				ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
-				// sending request to remoteCache instance
-				encodingPPR.Key = strconv.Itoa(ppCacheOp.QueueIndex)
-				encodingPPR.Operation = ">ik"
-				encodingPPR.Data = []byte{}
-				encodedPPR, err = util.EncodeMsg(encodingPPR)
-				if err != nil {
-					return
-				}
-				util.WriteFrame(writer, encodedPPR)
-			case ">c":
-				// adding request to cache-operation-buffer to assign it later to incoming request-reply
-				ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
-				// sending request to remoteCache instance
-				encodingPPR.Key = strconv.Itoa(ppCacheOp.QueueIndex)
-				encodingPPR.Operation = ">c"
-				encodingPPR.Data = []byte{}
-				encodedPPR, err = util.EncodeMsg(encodingPPR)
-				if err != nil {
-					return
-				}
-				util.WriteFrame(writer, encodedPPR)
-			}
 		// waits for possible request replies to pull-requests from remoteCache instance via. channel from connection-handler
 		case cacheReply := <-cacheRequestReply:
 			for _, req := range ppCacheOpBuffer {
@@ -238,9 +253,15 @@ func (cache RemoteCache) pushPullRequestHandler() {
 						// if request is not answered immeadiatly, request is forgotten
 						req.Processed = true
 					}
+				case ">s>s":
+					// is not flagged as processed and thus not removed since subscriptions are permanent
+					req.ReturnPayload <- cacheReply.Data
+					req.Processed = false
 				}
-				// removing all ppOp from ppCacheOpBuffer if processed
-				ppCacheOpBuffer = removeOperation(ppCacheOpBuffer, util.Index(len(ppCacheOpBuffer), func(i int) bool { return ppCacheOpBuffer[i].Processed }))
+				if req.Processed {
+					// removing all ppOp from ppCacheOpBuffer if processed
+					ppCacheOpBuffer = removeOperation(ppCacheOpBuffer, util.Index(len(ppCacheOpBuffer), func(i int) bool { return ppCacheOpBuffer[i].Processed }))
+				}
 			}
 		}
 	}
@@ -400,6 +421,17 @@ func (cache RemoteCache) GetKeyByIndex(index int) string {
 	}
 	request = nil
 	return payload
+}
+
+// creates pull request for the remoteCache instance
+func (cache RemoteCache) Subscribe() chan []byte {
+	// initiating pull request
+	request := new(PushPullRequest)
+	request.Operation = ">s"
+	request.ReturnPayload = make(chan []byte)
+  cache.PushPullRequestCh <- request
+
+	return request.ReturnPayload
 }
 
 // ppOp slice operation
