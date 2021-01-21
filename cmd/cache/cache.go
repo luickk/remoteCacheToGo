@@ -36,7 +36,7 @@ type Cache struct {
 	cacheMem map[string]*CacheVal
 
 	PushPullRequestCh chan *PushPullRequest
-	subscribedClients []*bufio.Writer
+	subscribedClients map[*bufio.Writer]int
 	clientWriteRequestCh chan *clientWriteRequest
 }
 
@@ -74,7 +74,7 @@ func (cache Cache) CacheHandler() {
 					}
 				// if it does, given data is written to key loc
 				} else if len(ppCacheOp.Data) > 0 { // push operation
-					for _, writer := range cache.subscribedClients {
+					for writer, _ := range cache.subscribedClients {
 						encodingPPR.Key = ppCacheOp.Key
 						encodingPPR.Operation = ">s"
 						encodingPPR.Data = ppCacheOp.Data
@@ -168,7 +168,10 @@ func (cache Cache) CacheHandler() {
 				}
 			case ">s":
 				// reply to pull-request from chacheClient by index
-				cache.subscribedClients = append(cache.subscribedClients, ppCacheOp.ClientWriter)
+				cache.subscribedClients[ppCacheOp.ClientWriter] = 0
+			case ">s-c":
+				// reply to pull-request from chacheClient by index
+				delete(cache.subscribedClients, ppCacheOp.ClientWriter)
 			}
 		}
 	}
@@ -188,6 +191,11 @@ func (cache Cache)clientHandler(c net.Conn) {
 	for {
 			netDataBuffer, err = util.ReadFrame(c)
 			if err != nil {
+				// write subscribed-client-list(subscribedClients) remove instruction
+				request := new(PushPullRequest)
+				request.Operation = ">s-c"
+				request.ClientWriter = writer
+				cache.PushPullRequestCh <- request
 				return
 			}
 			// parsing instrucitons from client
@@ -342,7 +350,7 @@ func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, dosProtection b
 // initiating new cache struct
 func New() Cache {
 	// initiating cache struct
-  cache := Cache{ make(map[string]*CacheVal), make(chan *PushPullRequest), []*bufio.Writer{}, make(chan *clientWriteRequest)}
+  cache := Cache{ make(map[string]*CacheVal), make(chan *PushPullRequest), make(map[*bufio.Writer]int), make(chan *clientWriteRequest)}
 
 	// starting cache handler to allow for concurrent memory(cache map) operations
 	go cache.CacheHandler()

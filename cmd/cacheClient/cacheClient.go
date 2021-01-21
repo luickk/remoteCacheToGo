@@ -11,6 +11,11 @@ import (
   "remoteCacheToGo/pkg/util"
 )
 
+type subscribeCacheVal struct {
+	Key string
+	Data []byte
+}
+
 // struct to handle any requests for the pushPullRequestHandler which operates on remoteCache connection
 type PushPullRequest struct {
 	Key string
@@ -20,6 +25,8 @@ type PushPullRequest struct {
 	ReturnPayload chan []byte
 	Data []byte
 	Processed bool
+
+	SubscriptionReturn chan *subscribeCacheVal
 }
 
 // acts as interface to talk to remoteCache instance (if conected successfully)
@@ -255,7 +262,7 @@ func (cache RemoteCache) pushPullRequestHandler() {
 					}
 				case ">s>s":
 					// is not flagged as processed and thus not removed since subscriptions are permanent
-					req.ReturnPayload <- cacheReply.Data
+					req.SubscriptionReturn <- &subscribeCacheVal{ cacheReply.Key, cacheReply.Data }
 					req.Processed = false
 				}
 				if req.Processed {
@@ -424,14 +431,14 @@ func (cache RemoteCache) GetKeyByIndex(index int) string {
 }
 
 // creates pull request for the remoteCache instance
-func (cache RemoteCache) Subscribe() chan []byte {
+func (cache RemoteCache) Subscribe() chan *subscribeCacheVal {
 	// initiating pull request
 	request := new(PushPullRequest)
 	request.Operation = ">s"
-	request.ReturnPayload = make(chan []byte)
+	request.SubscriptionReturn = make(chan *subscribeCacheVal)
   cache.PushPullRequestCh <- request
 
-	return request.ReturnPayload
+	return request.SubscriptionReturn
 }
 
 // ppOp slice operation

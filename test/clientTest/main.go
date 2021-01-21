@@ -38,8 +38,8 @@ func main() {
   // indexKeyTest(client)
 
   // starting testing routines
-  subscriptionTest(client)
-  // concurrentWriteTest(client)
+  go subscriptionTest(client)
+  concurrentWriteTest(client)
   // concurrentGetTest(client)
 }
 
@@ -48,7 +48,7 @@ func subscriptionTest(client cacheClient.RemoteCache) {
   for {
     select {
     case res := <-sCh:
-      fmt.Println(string(res))
+      fmt.Println(res.Key +  ": " + string(res.Data))
     }
   }
 }
