@@ -85,10 +85,7 @@ func (cache Cache) CacheHandler() {
 						cache.clientWriteRequestCh <- &clientWriteRequest { writer, encodedPPR }
 					}
 
-					val := new(CacheVal)
-					val.QueueIndex = queueIndex
-					val.Data = ppCacheOp.Data
-					cache.cacheMem[ppCacheOp.Key] = val
+					cache.cacheMem[ppCacheOp.Key] = &CacheVal{ ppCacheOp.Data, queueIndex }
 
 					// increasing queueIndex (count)
 					queueIndex++
@@ -192,10 +189,7 @@ func (cache Cache)clientHandler(c net.Conn) {
 			netDataBuffer, err = util.ReadFrame(c)
 			if err != nil {
 				// write subscribed-client-list(subscribedClients) remove instruction
-				request := new(PushPullRequest)
-				request.Operation = ">s-c"
-				request.ClientWriter = writer
-				cache.PushPullRequestCh <- request
+				cache.PushPullRequestCh <- &PushPullRequest{ "", 0, ">s-c", nil, nil, writer }
 				return
 			}
 			// parsing instrucitons from client
@@ -262,11 +256,7 @@ func (cache Cache)clientHandler(c net.Conn) {
 			}
 			cache.clientWriteRequestCh <- &clientWriteRequest { writer, encodedPPR }
 		case ">s":
-			request := new(PushPullRequest)
-			request.Operation = ">s"
-			request.ClientWriter = writer
-			cache.PushPullRequestCh <- request
-			request = nil
+			cache.PushPullRequestCh <- &PushPullRequest{ "", 0, ">s", nil, nil, writer }
 		case "<":
 			// writing push-request from client to cache
 			cache.AddValByKey(decodedPPR.Key, decodedPPR.Data)
@@ -363,22 +353,14 @@ func New() Cache {
 // (can also overwrite/ replace)
 func (cache Cache) AddValByKey(key string, val []byte) {
 	// initiates push request
-	request := new(PushPullRequest)
-	request.Key = key
-	request.Data = val
-	request.Operation = ">"
 	// pushing request to pushPull handler
-  cache.PushPullRequestCh <- request
-	request = nil
+  cache.PushPullRequestCh <- &PushPullRequest{ key, 0, ">", nil, val, nil }
 }
 
 // creates pull request for the remoteCache instance
 func (cache Cache) GetValByKey(key string) []byte {
 	// initiating pull request
-	request := new(PushPullRequest)
-	request.Key = key
-	request.ReturnPayload = make(chan []byte)
-	request.Operation = ">"
+	request := &PushPullRequest{ key, 0, ">", make(chan []byte), nil, nil}
   cache.PushPullRequestCh <- request
 
 	reply := false
@@ -393,18 +375,13 @@ func (cache Cache) GetValByKey(key string) []byte {
 			break
 		}
 	}
-	request = nil
 	return payload
 }
 
 // creates pull request for the remoteCache instance
 func (cache Cache) GetCountByIndex(index int) (int, error) {
 	// initiating pull request
-	request := new(PushPullRequest)
-	request.QueueIndex = index
-	request.Operation = ">c"
-
-	request.ReturnPayload = make(chan []byte)
+	request := &PushPullRequest { "", index, ">c", nil, nil, nil }
   cache.PushPullRequestCh <- request
 
 	reply := false
@@ -419,7 +396,6 @@ func (cache Cache) GetCountByIndex(index int) (int, error) {
 			break
 		}
 	}
-	request = nil
 	var count int
 	var err error
 	if len(payload) != 0 {
@@ -437,10 +413,7 @@ func (cache Cache) GetCountByIndex(index int) (int, error) {
 // creates pull request for the remoteCache instance
 func (cache Cache) GetValByIndex(index int) []byte {
 	// initiating pull request
-	request := new(PushPullRequest)
-	request.QueueIndex = index
-	request.Operation = ">i"
-	request.ReturnPayload = make(chan []byte)
+	request := &PushPullRequest { "", index, ">i", make(chan []byte), nil, nil }
   cache.PushPullRequestCh <- request
 
 	var reply bool
@@ -455,7 +428,6 @@ func (cache Cache) GetValByIndex(index int) []byte {
 			break
 		}
 	}
-	request = nil
 	return payload
 }
 
@@ -467,7 +439,7 @@ func (cache Cache) GetKeyByIndex(index int) string {
 	request.QueueIndex = index
 	request.Operation = ">ik"
 	request.ReturnPayload = make(chan []byte)
-  cache.PushPullRequestCh <- request
+  cache.PushPullRequestCh <- &PushPullRequest { "", index, ">ik", make(chan []byte), nil, nil }
 
 	var reply bool
 	var payload string
@@ -481,6 +453,5 @@ func (cache Cache) GetKeyByIndex(index int) string {
 			break
 		}
 	}
-	request = nil
 	return payload
 }

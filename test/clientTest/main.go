@@ -39,8 +39,8 @@ func main() {
 
   // starting testing routines
   go subscriptionTest(client)
+  // go concurrentGetTest(client)
   concurrentWriteTest(client)
-  // concurrentGetTest(client)
 }
 
 func subscriptionTest(client cacheClient.RemoteCache) {
