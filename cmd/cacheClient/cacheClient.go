@@ -1,4 +1,4 @@
-package cacheClient
+PushPullRequest{package cacheClient
 
 import (
 	"net"
@@ -32,7 +32,7 @@ type PushPullRequest struct {
 // acts as interface to talk to remoteCache instance (if conected successfully)
 type RemoteCache struct {
 	conn net.Conn
-	PushPullRequestCh chan *PushPullRequest
+	PushPullRequestCh chan PushPullRequest
 	CacheHandlerStarted bool
 }
 
@@ -78,7 +78,7 @@ func connectToTlsRemoteHandler(address string, port int, pwHash string, rootCert
 
 // connection-handler waits for incoming data
 // incoming data is parsed and possible request answers are pushed to back to the pushPullRequestHandler
-func connHandler(conn net.Conn, cacheRequestReply chan *PushPullRequest) {
+func connHandler(conn net.Conn, cacheRequestReply chan PushPullRequest) {
 	var err error
 	decodedPPR := new(util.SPushPullReq)
 	netDataBuffer := make([]byte, tcpConnBuffer)
@@ -99,27 +99,27 @@ func connHandler(conn net.Conn, cacheRequestReply chan *PushPullRequest) {
 			request.Key = decodedPPR.Key
 			request.Operation = ">"
 			request.Data = decodedPPR.Data
-			cacheRequestReply <- request
+			cacheRequestReply <- *request
 		case ">i":
 			request.Operation = ">i"
 			request.QueueIndex, _ = strconv.Atoi(decodedPPR.Key)
 			request.Data = decodedPPR.Data
-			cacheRequestReply <- request
+			cacheRequestReply <- *request
 		case ">ik":
 			request.Operation = ">ik"
 			request.QueueIndex, _ = strconv.Atoi(decodedPPR.Key)
 			request.Data = decodedPPR.Data
-			cacheRequestReply <- request
+			cacheRequestReply <- *request
 		case ">c":
 			request.Operation = ">c"
 			request.QueueIndex, _ = strconv.Atoi(decodedPPR.Key)
 			request.Data = decodedPPR.Data
-			cacheRequestReply <- request
+			cacheRequestReply <- *request
 		case ">s":
 			request.Operation = ">s"
 			request.Key = decodedPPR.Key
 			request.Data = decodedPPR.Data
-			cacheRequestReply <- request
+			cacheRequestReply <- *request
 		}
 	}
 }
@@ -129,9 +129,9 @@ func connHandler(conn net.Conn, cacheRequestReply chan *PushPullRequest) {
 func (cache RemoteCache) pushPullRequestHandler() {
 	// setting indicator for cache handler state to true
   cache.CacheHandlerStarted = true
-	cacheRequestReply := make(chan *PushPullRequest)
+	cacheRequestReply := make(chan PushPullRequest)
 	// push pull buffer, buffers all made pull requests to remoteCache instance to find & route replies to call
-	var ppCacheOpBuffer []*PushPullRequest
+	var ppCacheOpBuffer []PushPullRequest
 	var encodedPPR []byte
 	var err error
 	encodingPPR := new(util.SPushPullReq)
@@ -261,7 +261,6 @@ func (cache RemoteCache) pushPullRequestHandler() {
 						req.Processed = true
 					}
 				case ">s>s":
-					// is not flagged as processed and thus not removed since subscriptions are permanent
 					req.SubscriptionReturn <- &subscribeCacheVal{ cacheReply.Key, cacheReply.Data }
 					req.Processed = false
 				}
@@ -307,7 +306,7 @@ func New(address string, port int, tls bool, pwHash string, rootCert string) (Re
 func (cache RemoteCache) AddValByKey(key string, val []byte) error {
 	if len(key) > 0 && len(val) > 0 {
 		// initiates push request
-	  cache.PushPullRequestCh <- &PushPullRequest{ key, 0, ">", nil, val, false, nil }
+	  cache.PushPullRequestCh <- PushPullRequest{ key, 0, ">", nil, val, false, nil }
 		return nil
 	}
 	return errors.New("key or value are empty")
@@ -316,7 +315,7 @@ func (cache RemoteCache) AddValByKey(key string, val []byte) error {
 // creates pull request for the remoteCache instance
 func (cache RemoteCache) GetValByKey(key string) ([]byte, error) {
 	if len(key) > 0 {
-		request := &PushPullRequest{ key, 0, ">", make(chan []byte), nil, false, nil }
+		request := PushPullRequest{ key, 0, ">", make(chan []byte), nil, false, nil }
 		// initiating pull request
 	  cache.PushPullRequestCh <- request
 
@@ -342,7 +341,7 @@ func (cache RemoteCache) GetValByKey(key string) ([]byte, error) {
 // creates pull request for the remoteCache instance
 func (cache RemoteCache) GetCountByIndex(index int) (int, error) {
 	// initiating pull request
-	request := &PushPullRequest{ "", index, ">c", make(chan []byte), nil, false, nil }
+	request := PushPullRequest{ "", index, ">c", make(chan []byte), nil, false, nil }
 
 	cache.PushPullRequestCh <- request
 
@@ -370,7 +369,7 @@ func (cache RemoteCache) GetCountByIndex(index int) (int, error) {
 // creates pull request for the remoteCache instance
 func (cache RemoteCache) GetValByIndex(index int) []byte {
 	// initiating pull request
-	request := &PushPullRequest{ "", index, ">i", make(chan []byte), nil, false, nil }
+	request := PushPullRequest{ "", index, ">i", make(chan []byte), nil, false, nil }
 	cache.PushPullRequestCh <- request
 
 	var reply bool
@@ -392,7 +391,7 @@ func (cache RemoteCache) GetValByIndex(index int) []byte {
 // creates pull request for the remoteCache instance
 func (cache RemoteCache) GetKeyByIndex(index int) string {
 	// initiating pull request
-	request := &PushPullRequest{ "", index, ">ik", make(chan []byte), nil, false, nil }
+	request := PushPullRequest{ "", index, ">ik", make(chan []byte), nil, false, nil }
 	cache.PushPullRequestCh <- request
 
 	var reply bool
@@ -414,7 +413,7 @@ func (cache RemoteCache) GetKeyByIndex(index int) string {
 // creates pull request for the remoteCache instance
 func (cache RemoteCache) Subscribe() chan *subscribeCacheVal {
 	// initiating pull request
-	request := &PushPullRequest{ "", 0, ">s", nil, nil, false, make(chan *subscribeCacheVal) }
+	request := PushPullRequest{ "", 0, ">s", nil, nil, false, make(chan *subscribeCacheVal) }
 	cache.PushPullRequestCh <- request
 
 	return request.SubscriptionReturn
