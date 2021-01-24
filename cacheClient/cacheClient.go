@@ -1,4 +1,4 @@
-PushPullRequest{package cacheClient
+package cacheClient
 
 import (
 	"net"
@@ -280,7 +280,7 @@ func New(address string, port int, tls bool, pwHash string, rootCert string) (Re
 	var err error
 
 	// initing remote cache struct
-	cache := RemoteCache{conn, make(chan *PushPullRequest), false}
+	cache := RemoteCache{conn, make(chan PushPullRequest), false}
 
 	// checking ig tls is enabled or not
 	if tls {
@@ -332,7 +332,6 @@ func (cache RemoteCache) GetValByKey(key string) ([]byte, error) {
 			}
 		}
 
-		request = nil
 		return payload, nil
 	}
 	return []byte{}, errors.New("key is empty")
@@ -357,7 +356,6 @@ func (cache RemoteCache) GetCountByIndex(index int) (int, error) {
 			break
 		}
 	}
-	request = nil
 	// converting payload to string to int (payload = count)
 	count, err := strconv.Atoi(string(payload))
 	if err != nil {
@@ -384,7 +382,6 @@ func (cache RemoteCache) GetValByIndex(index int) []byte {
 			break
 		}
 	}
-	request = nil
 	return payload
 }
 
@@ -406,7 +403,6 @@ func (cache RemoteCache) GetKeyByIndex(index int) string {
 			break
 		}
 	}
-	request = nil
 	return payload
 }
 
@@ -421,7 +417,7 @@ func (cache RemoteCache) Subscribe() chan *subscribeCacheVal {
 
 // ppOp slice operation
 // only use if order is not of importance
-func removeOperation(s []*PushPullRequest, i int) []*PushPullRequest {
+func removeOperation(s []PushPullRequest, i int) []PushPullRequest {
     s[i] = s[len(s)-1]
     // We do not need to put s[i] at the end, as it will be discarded anyway
     return s[:len(s)-1]
