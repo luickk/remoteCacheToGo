@@ -219,7 +219,7 @@ func (cache RemoteCache) pushPullRequestHandler() {
 				}
 		// waits for possible request replies to pull-requests from remoteCache instance via. channel from connection-handler
 		case cacheReply := <-cacheRequestReply:
-			for _, req := range ppCacheOpBuffer {
+			for i, req := range ppCacheOpBuffer {
 				switch (cacheReply.Operation + req.Operation) {
 				case ">>":
 					if !req.Processed {
@@ -262,11 +262,10 @@ func (cache RemoteCache) pushPullRequestHandler() {
 					}
 				case ">s>s":
 					req.SubscriptionReturn <- &subscribeCacheVal{ cacheReply.Key, cacheReply.Data }
-					req.Processed = false
 				}
 				if req.Processed {
 					// removing all ppOp from ppCacheOpBuffer if processed
-					ppCacheOpBuffer = removeOperation(ppCacheOpBuffer, util.Index(len(ppCacheOpBuffer), func(i int) bool { return ppCacheOpBuffer[i].Processed }))
+					ppCacheOpBuffer = removeOperation(ppCacheOpBuffer, i)
 				}
 			}
 		}

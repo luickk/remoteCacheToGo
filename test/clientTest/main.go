@@ -33,14 +33,16 @@ func main() {
   }
   fmt.Println("Read val from key remote: "+string(res))
 
+  go concurrentWriteTest(client)
+
+  // starting testing functions
+
   // indexTest(client)
   // countTest(client)
   // indexKeyTest(client)
 
-  // starting testing routines
-  go subscriptionTest(client)
-  // go concurrentGetTest(client)
-  concurrentWriteTest(client)
+  // subscriptionTest(client)
+  concurrentGetTest(client)
 }
 
 func subscriptionTest(client cacheClient.RemoteCache) {
