@@ -4,7 +4,7 @@ import (
   "fmt"
   "strconv"
   "time"
-  "remoteCacheToGo/cmd/cacheClient"
+  "remoteCacheToGo/cacheClient"
 )
 
 func main() {
