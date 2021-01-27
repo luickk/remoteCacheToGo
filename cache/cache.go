@@ -267,11 +267,11 @@ func (cache Cache)clientHandler(c net.Conn) {
 }
 
 // provides network interface for given cache
-func (cache Cache) RemoteConnHandler(port int) {
+func (cache Cache) RemoteConnHandler(bindAddress string, port int) error {
 	// opening tcp server
-	l, err := net.Listen("tcp4", "127.0.0.1:"+strconv.Itoa(port))
+	l, err := net.Listen("tcp4", bindAddress+":"+strconv.Itoa(port))
 	if err != nil {
-		return
+		return err
 	}
 	defer l.Close()
 
@@ -279,10 +279,11 @@ func (cache Cache) RemoteConnHandler(port int) {
 		// waiting for client to connect
 		c, err := l.Accept()
 		if err != nil {
-			return
+			return err
 		}
 		go cache.clientHandler(c)
 	}
+	return nil
 }
 
 // clientWriteRequestHandler handles all write request to clients
@@ -301,7 +302,7 @@ func (cache Cache)clientWriteRequestHandler() {
 // provides TLS encryption and password authentication
 // provides valid and signed public/ private key pair and password hash to validate against
 // parameters: port, password Hash (please don't use unhashed pw strings), dosProtection enables delay between reconnects by ip, server Certificate, private Key
-func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, dosProtection bool, serverCert string, serverKey string) {
+func (cache Cache) RemoteTlsConnHandler(port int, bindAddress string, pwHash string, dosProtection bool, serverCert string, serverKey string) {
 	// initiating provided key pair
 	cer, err := tls.X509KeyPair([]byte(serverCert), []byte(serverKey))
 	if err != nil {
@@ -315,7 +316,7 @@ func (cache Cache) RemoteTlsConnHandler(port int, pwHash string, dosProtection b
 	config := &tls.Config{Certificates: []tls.Certificate{cer}}
 
 	// listening for clients who want to connect
-	l, err := tls.Listen("tcp", "127.0.0.1:"+strconv.Itoa(port), config)
+	l, err := tls.Listen("tcp", bindAddress+strconv.Itoa(port), config)
 	if err != nil {
 		return
 	}

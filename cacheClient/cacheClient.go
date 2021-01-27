@@ -274,30 +274,35 @@ func (cache RemoteCache) pushPullRequestHandler() {
 
 // initiates new RemoteCache struct and connects to remoteCache instance
 // params concerning tls (tls, pwHash, rootCert) can be initiated empty if tls bool is false
-func New(address string, port int, tls bool, pwHash string, rootCert string) (RemoteCache, error) {
-	var conn net.Conn
-	var err error
-
+func New() RemoteCache {
 	// initing remote cache struct
-	cache := RemoteCache{conn, make(chan PushPullRequest), false}
+	var conn net.Conn
+	return RemoteCache{conn, make(chan PushPullRequest), false}
+}
 
+func (cache RemoteCache)ConnectToCache(address string, port int, pwHash string, rootCert string) error {
+	var (
+		err error
+		conn net.Conn
+	)
 	// checking ig tls is enabled or not
-	if tls {
+	if pwHash != "" && rootCert != "" {
 		conn, err = connectToTlsRemoteHandler(address, port, pwHash, rootCert)
 	  if err != nil {
-			return cache, err
+			return err
 	  }
 	} else {
 		conn, err = connectToRemoteHandler(address, port)
 	  if err != nil {
-			return cache, err
+			return err
 	  }
 	}
 	cache.conn = conn
 
 	// starts pushPullRequestHandler for concurrent request handling
   go cache.pushPullRequestHandler()
-	return cache, nil
+
+	return nil
 }
 
 // adds key value to remote cache

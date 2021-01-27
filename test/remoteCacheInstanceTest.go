@@ -20,7 +20,11 @@ func main() {
   fmt.Println("Requestd key: " + string(res))
 
   // creating unencrypted network interfce for cache with name "remote"
-  remoteCache.RemoteConnHandler(8000)
+  if err := remoteCache.RemoteConnHandler("127.0.0.1", 8000); err != nil {
+    fmt.Println(err)
+    return
+  }
+
 }
 
 func concurrentTestInstanceA(remoteCache cache.Cache) {

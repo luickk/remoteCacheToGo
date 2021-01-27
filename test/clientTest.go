@@ -12,8 +12,8 @@ func main() {
 
   // creates new cacheClient struct and connects to remoteCache instance
   // no tls encryption -> param3: false
-  client, err := cacheClient.New("127.0.0.1", 8000, false, "", "")
-  if err != nil {
+  client := cacheClient.New()
+  if err := client.ConnectToCache("127.0.0.1", 8000, "", ""); err != nil {
     fmt.Println(err)
     return
   }
