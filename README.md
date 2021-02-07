@@ -19,6 +19,12 @@ the cache can only be used in a local program context
 - remote key/ val cache  <br>
 the cache can be made accessible via tcp conn. either encrypted(tls) or unencrypted
 
+# Optimisations to be done
+
+- shrinking amount of used memory by introducing more pointers
+- Enums instead of strings for operation types
+- utilisation of mutex for state type data
+
 
 ## Example
 
