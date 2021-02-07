@@ -78,7 +78,7 @@ func connectToTlsRemoteHandler(address string, port int, pwHash string, rootCert
 
 // connection-handler waits for incoming data
 // incoming data is parsed and possible request answers are pushed to back to the pushPullRequestHandler
-func connHandler(conn net.Conn, cacheRequestReply chan PushPullRequest) {
+func connHandler(conn net.Conn, cacheRequestReply chan PushPullRequest) error {
 	var err error
 	decodedPPR := new(util.SPushPullReq)
 	netDataBuffer := make([]byte, tcpConnBuffer)
@@ -87,11 +87,11 @@ func connHandler(conn net.Conn, cacheRequestReply chan PushPullRequest) {
 	for {
 		netDataBuffer, err = util.ReadFrame(conn)
 		if err != nil {
-			return
+			return err
 		}
 		// parsing instrucitons from client
 		if err := util.DecodeMsg(decodedPPR, netDataBuffer); err != nil {
-			return
+			return err
 		}
 		switch decodedPPR.Operation {
 		case ">":
@@ -126,7 +126,7 @@ func connHandler(conn net.Conn, cacheRequestReply chan PushPullRequest) {
 
 // handles incoming requests on connected remoteCache
 // reads/ writes form/ to connected cache
-func (cache RemoteCache) pushPullRequestHandler() {
+func (cache RemoteCache) pushPullRequestHandler() error {
 	// setting indicator for cache handler state to true
   cache.CacheHandlerStarted = true
 	cacheRequestReply := make(chan PushPullRequest)
@@ -138,7 +138,9 @@ func (cache RemoteCache) pushPullRequestHandler() {
 	writer := bufio.NewWriter(cache.conn)
 
 	// starting connection Handler routine to parse incoming data and add to push request-replies to cacheListiner
-	go connHandler(cache.conn, cacheRequestReply)
+	go func(conn net.Conn, crp chan PushPullRequest) error {
+		return connHandler(conn, crp)
+	}(cache.conn, cacheRequestReply)
 
 	for {
 		select {
@@ -155,7 +157,7 @@ func (cache RemoteCache) pushPullRequestHandler() {
 						encodingPPR.Data = []byte{}
 						encodedPPR, err = util.EncodeMsg(encodingPPR)
 						if err != nil {
-							return
+							return err
 						}
 						// reply to pull-request from chacheClient by key
 						util.WriteFrame(writer, encodedPPR)
@@ -166,7 +168,7 @@ func (cache RemoteCache) pushPullRequestHandler() {
 						encodingPPR.Data = ppCacheOp.Data
 						encodedPPR, err = util.EncodeMsg(encodingPPR)
 						if err != nil {
-							return
+							return err
 						}
 						util.WriteFrame(writer, encodedPPR)
 					}
@@ -179,7 +181,7 @@ func (cache RemoteCache) pushPullRequestHandler() {
 					encodingPPR.Data = []byte{}
 					encodedPPR, err = util.EncodeMsg(encodingPPR)
 					if err != nil {
-						return
+						return err
 					}
 					util.WriteFrame(writer, encodedPPR)
 				case ">ik":
@@ -191,7 +193,7 @@ func (cache RemoteCache) pushPullRequestHandler() {
 					encodingPPR.Data = []byte{}
 					encodedPPR, err = util.EncodeMsg(encodingPPR)
 					if err != nil {
-						return
+						return err
 					}
 					util.WriteFrame(writer, encodedPPR)
 				case ">c":
@@ -203,7 +205,7 @@ func (cache RemoteCache) pushPullRequestHandler() {
 					encodingPPR.Data = []byte{}
 					encodedPPR, err = util.EncodeMsg(encodingPPR)
 					if err != nil {
-						return
+						return err
 					}
 					util.WriteFrame(writer, encodedPPR)
 				case ">s":
@@ -213,7 +215,7 @@ func (cache RemoteCache) pushPullRequestHandler() {
 					encodingPPR.Operation = ">s"
 					encodedPPR, err = util.EncodeMsg(encodingPPR)
 					if err != nil {
-						return
+						return err
 					}
 					util.WriteFrame(writer, encodedPPR)
 				}
@@ -300,7 +302,9 @@ func (cache RemoteCache)ConnectToCache(address string, port int, pwHash string, 
 	cache.conn = conn
 
 	// starts pushPullRequestHandler for concurrent request handling
-  go cache.pushPullRequestHandler()
+	go func() error {
+	 return cache.pushPullRequestHandler()
+	}()
 
 	return nil
 }
@@ -339,75 +343,6 @@ func (cache RemoteCache) GetValByKey(key string) ([]byte, error) {
 		return payload, nil
 	}
 	return []byte{}, errors.New("key is empty")
-}
-
-// creates pull request for the remoteCache instance
-func (cache RemoteCache) GetCountByIndex(index int) (int, error) {
-	// initiating pull request
-	request := PushPullRequest{ "", index, ">c", make(chan []byte), nil, false, nil }
-
-	cache.PushPullRequestCh <- request
-
-	reply := false
-	payload := []byte{}
-
-	// waiting for request to be processed and retrieval of payload
-	for !reply {
-		select {
-		case liveDataRes := <-request.ReturnPayload:
-			payload = liveDataRes
-			reply = true
-			break
-		}
-	}
-	// converting payload to string to int (payload = count)
-	count, err := strconv.Atoi(string(payload))
-	if err != nil {
-		return 0, err
-	}
-	return count, nil
-}
-
-// creates pull request for the remoteCache instance
-func (cache RemoteCache) GetValByIndex(index int) []byte {
-	// initiating pull request
-	request := PushPullRequest{ "", index, ">i", make(chan []byte), nil, false, nil }
-	cache.PushPullRequestCh <- request
-
-	var reply bool
-	var payload []byte
-
-	// waiting for request to be processed and retrieval of payload
-	for !reply {
-		select {
-		case liveDataRes := <-request.ReturnPayload:
-			payload = liveDataRes
-			reply = true
-			break
-		}
-	}
-	return payload
-}
-
-// creates pull request for the remoteCache instance
-func (cache RemoteCache) GetKeyByIndex(index int) string {
-	// initiating pull request
-	request := PushPullRequest{ "", index, ">ik", make(chan []byte), nil, false, nil }
-	cache.PushPullRequestCh <- request
-
-	var reply bool
-	var payload string
-
-	// waiting for request to be processed and retrieval of payload
-	for !reply {
-		select {
-		case liveDataRes := <-request.ReturnPayload:
-			payload = string(liveDataRes)
-			reply = true
-			break
-		}
-	}
-	return payload
 }
 
 // creates pull request for the remoteCache instance

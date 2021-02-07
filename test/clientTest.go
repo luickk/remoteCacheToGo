@@ -37,10 +37,6 @@ func main() {
 
   // starting testing functions
 
-  // indexTest(client)
-  // countTest(client)
-  // indexKeyTest(client)
-
   // subscriptionTest(client)
   concurrentGetTest(client)
 }
@@ -54,38 +50,6 @@ func subscriptionTest(client cacheClient.RemoteCache) {
     }
   }
 }
-
-func indexTest(client cacheClient.RemoteCache) {
-  i := 0
-  for {
-    i++
-    fmt.Println("index "+strconv.Itoa(i) + ": " + string(client.GetValByIndex(i)))
-    time.Sleep(1 * time.Millisecond)
-  }
-}
-
-func indexKeyTest(client cacheClient.RemoteCache) {
-  i := 0
-  for {
-    i++
-    fmt.Println("index(key) "+strconv.Itoa(i) + ": " + string(client.GetKeyByIndex(i)))
-    time.Sleep(1 * time.Millisecond)
-  }
-}
-
-func countTest(client cacheClient.RemoteCache) {
-  i := 0
-  for {
-    i++
-    count, err := client.GetCountByIndex(i)
-    if err != nil {
-      fmt.Println(err)
-    }
-    fmt.Println("count(reversed Index) "+strconv.Itoa(i) + ": " + strconv.Itoa(count))
-    time.Sleep(1 * time.Millisecond)
-  }
-}
-
 
 func concurrentWriteTest(client cacheClient.RemoteCache) {
   i := 0

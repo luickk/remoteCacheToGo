@@ -18,8 +18,6 @@ The cacheMap is a simple map type object which is held in cache which enables fa
 the cache can only be used in a local program context
 - remote key/ val cache  <br>
 the cache can be made accessible via tcp conn. either encrypted(tls) or unencrypted
-- key/val cache can be used as queue <br>
-Elements can be requested by the order(index or count) they have been pushed to the cache
 
 
 ## Example
