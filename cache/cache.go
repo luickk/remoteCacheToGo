@@ -247,7 +247,7 @@ func (cache Cache) GetValByKey(key string) []byte {
   cache.PushPullRequestCh <- request
 
 	reply := false
-	payload := []bytef
+	payload := []byte{}
 
 	// waiting for request to be processed and retrieval of payload
 	for !reply {
