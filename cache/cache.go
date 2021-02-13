@@ -7,6 +7,8 @@ import (
 	"strings"
 	"crypto/tls"
 
+	"fmt"
+
   "remoteCacheToGo/pkg/util"
   "remoteCacheToGo/pkg/goDosProtection"
 )
@@ -14,7 +16,6 @@ import (
 // struct to handle any requests for the CacheHandler which operates on cache memory
 type PushPullRequest struct {
 	Key string
-	QueueIndex int
 	Operation string
 
 	ReturnPayload chan []byte
@@ -33,17 +34,11 @@ type clientWriteRequest struct {
 // stores all important data for cache
 type Cache struct {
 	// actual cache, holding all the data in memory
-	cacheMem map[string]*CacheVal
+	cacheMem map[string][]byte
 
 	PushPullRequestCh chan *PushPullRequest
 	subscribedClients map[*bufio.Writer]int
 	clientWriteRequestCh chan *clientWriteRequest
-}
-
-// required since the queueIndex is also in the cache map key
-type CacheVal struct {
-	Data []byte
-	QueueIndex int
 }
 
 // tcpConnBuffer defines the buffer size of the TCP conn reader
@@ -54,7 +49,6 @@ var tcpConnBuffer = 2048
 func (cache Cache) CacheHandler() error {
 	var (
 		err error
-		queueIndex int = 1
 		encodedPPR []byte
 	)
 	encodingPPR := new(util.SPushPullReq)
@@ -68,7 +62,7 @@ func (cache Cache) CacheHandler() error {
 				if len(ppCacheOp.Data) <= 0 { // pull operation
 					// checking if cache-map contains key
 					if _, ok := cache.cacheMem[ppCacheOp.Key]; ok {
-						ppCacheOp.ReturnPayload <- cache.cacheMem[ppCacheOp.Key].Data
+						ppCacheOp.ReturnPayload <- cache.cacheMem[ppCacheOp.Key]
 					} else {
 						ppCacheOp.ReturnPayload <- []byte{}
 					}
@@ -82,86 +76,12 @@ func (cache Cache) CacheHandler() error {
 						if err != nil {
 							return err
 						}
+						fmt.Println(string(encodedPPR))
 						cache.clientWriteRequestCh <- &clientWriteRequest { writer, encodedPPR }
 					}
 
-					cache.cacheMem[ppCacheOp.Key] = &CacheVal{ ppCacheOp.Data, queueIndex }
+					cache.cacheMem[ppCacheOp.Key] = ppCacheOp.Data
 
-					// increasing queueIndex (count)
-					queueIndex++
-				}
-			case ">i":
-				var (
-					found bool
-					reversedReqIndex int
-				)
-				// Iterate over cacheMem CacheVal which stores queue index
-				for _, data := range cache.cacheMem {
-					if !(ppCacheOp.QueueIndex > len(cache.cacheMem)) {
-						// calculating reversed index
-						reversedReqIndex = len(cache.cacheMem) - ppCacheOp.QueueIndex
-					} else {
-						// setting reversed index to max len of cache-map
-						reversedReqIndex = len(cache.cacheMem)
-					}
-					if data.QueueIndex == reversedReqIndex {
-						found = true
-						// returning value at key to return channel
-						ppCacheOp.ReturnPayload <- data.Data
-					}
-				}
-				if !found {
-					// returning zero bytes if if there is no matching index
-					ppCacheOp.ReturnPayload <- []byte{}
-				}
-			case ">ik":
-				var (
-					found bool
-					reversedReqIndex int
-				)
-				// Iterate over cacheMem CacheVal which stores queue index
-				for key, data := range cache.cacheMem {
-					if !(ppCacheOp.QueueIndex > len(cache.cacheMem)) {
-						// calculating reversed index
-						reversedReqIndex = len(cache.cacheMem) - ppCacheOp.QueueIndex
-					} else {
-						// setting reversed index to max len of cache-map
-						reversedReqIndex = len(cache.cacheMem)
-					}
-					if data.QueueIndex == reversedReqIndex {
-						found = true
-						// returning value at key to return channel
-						ppCacheOp.ReturnPayload <- []byte(key)
-					}
-				}
-				if !found {
-					// returning zero bytes if if there is no matching index
-					ppCacheOp.ReturnPayload <- []byte{}
-				}
-			case ">c":
-				var (
-					found bool
-					reversedReqIndex int
-				)
-				for _, data := range cache.cacheMem {
-					// checking if request index is within the "index-space" of the cache-map
-					if !(ppCacheOp.QueueIndex > len(cache.cacheMem)) {
-						// calculating reversed index
-						reversedReqIndex = len(cache.cacheMem) - ppCacheOp.QueueIndex
-					} else {
-						// setting reversed index to min len of cache-map
-						reversedReqIndex = 1
-					}
-					// finding element with matching index
-					if data.QueueIndex == reversedReqIndex {
-						// returning value at index to return channel
-						ppCacheOp.ReturnPayload <- []byte(strconv.Itoa(data.QueueIndex))
-						found = true
-					}
-				}
-				if !found {
-					// returning zero bytes if if there is no matching index
-					ppCacheOp.ReturnPayload <- []byte{}
 				}
 			case ">s":
 				// reply to pull-request from chacheClient by index
@@ -169,6 +89,8 @@ func (cache Cache) CacheHandler() error {
 			case ">s-c":
 				// reply to pull-request from chacheClient by index
 				delete(cache.subscribedClients, ppCacheOp.ClientWriter)
+			default:
+					 break
 			}
 		}
 	}
@@ -179,23 +101,25 @@ func (cache Cache) CacheHandler() error {
 // parses all incoming data
 // hanles all operations on connection object
 func (cache Cache)clientHandler(c net.Conn) error {
-	var encodedPPR []byte
-	var err error
+	var (
+		encodedPPR []byte
+		err error
+	)
 	writer := bufio.NewWriter(c)
 	decodedPPR := new(util.SPushPullReq)
 	encodingPPR := new(util.SPushPullReq)
 	netDataBuffer := make([]byte, tcpConnBuffer)
 	for {
-			netDataBuffer, err = util.ReadFrame(c)
-			if err != nil {
-				// write subscribed-client-list(subscribedClients) remove instruction
-				cache.PushPullRequestCh <- &PushPullRequest{ "", 0, ">s-c", nil, nil, writer }
-				return err
-			}
-			// parsing instrucitons from client
-			if err := util.DecodeMsg(decodedPPR, netDataBuffer); err != nil {
-				return err
-			}
+		netDataBuffer, err = util.ReadFrame(c)
+		if err != nil {
+			// write subscribed-client-list(subscribedClients) remove instruction
+			cache.PushPullRequestCh <- &PushPullRequest{ "", ">s-c", nil, nil, writer }
+			return err
+		}
+		// parsing instrucitons from client
+		if err := util.DecodeMsg(decodedPPR, netDataBuffer); err != nil {
+			return err
+		}
 		switch decodedPPR.Operation {
 		case ">":
 			encodingPPR.Key = decodedPPR.Key
@@ -210,12 +134,12 @@ func (cache Cache)clientHandler(c net.Conn) error {
 			}
 			cache.clientWriteRequestCh <- &clientWriteRequest { writer, encodedPPR }
 		case ">s":
-			cache.PushPullRequestCh <- &PushPullRequest{ "", 0, ">s", nil, nil, writer }
+			cache.PushPullRequestCh <- &PushPullRequest{ "", ">s", nil, nil, writer }
 		case "<":
 			// writing push-request from client to cache
 			cache.AddValByKey(decodedPPR.Key, decodedPPR.Data)
 		default:
-				return nil
+				 break
 		}
 	}
 }
@@ -245,11 +169,9 @@ func (cache Cache) RemoteConnHandler(bindAddress string, port int) error {
 // clientWriteRequestHandler handles all write request to clients
 func (cache Cache)clientWriteRequestHandler() error {
 	for {
-		select {
-		case writeRequest := <-cache.clientWriteRequestCh:
-			if err := util.WriteFrame(writeRequest.receivingClient, writeRequest.data); err != nil {
-				return err
-			}
+		writeRequest := <-cache.clientWriteRequestCh
+		if err := util.WriteFrame(writeRequest.receivingClient, writeRequest.data); err != nil {
+			return err
 		}
 	}
 }
@@ -272,7 +194,7 @@ func (cache Cache) RemoteTlsConnHandler(port int, bindAddress string, pwHash str
 	config := &tls.Config{Certificates: []tls.Certificate{cer}}
 
 	// listening for clients who want to connect
-	l, err := tls.Listen("tcp", bindAddress+strconv.Itoa(port), config)
+	l, err := tls.Listen("tcp", bindAddress+":"+strconv.Itoa(port), config)
 	if err != nil {
 		return err
 	}
@@ -297,7 +219,7 @@ func (cache Cache) RemoteTlsConnHandler(port int, bindAddress string, pwHash str
 // initiating new cache struct
 func New() Cache {
 	// initiating cache struct
-  cache := Cache{ make(map[string]*CacheVal), make(chan *PushPullRequest), make(map[*bufio.Writer]int), make(chan *clientWriteRequest)}
+  cache := Cache{ make(map[string][]byte), make(chan *PushPullRequest), make(map[*bufio.Writer]int), make(chan *clientWriteRequest)}
 
 	// starting cache handler to allow for concurrent memory(cache map) operations
 	go func() error {
@@ -315,17 +237,17 @@ func New() Cache {
 func (cache Cache) AddValByKey(key string, val []byte) {
 	// initiates push request
 	// pushing request to pushPull handler
-  cache.PushPullRequestCh <- &PushPullRequest{ key, 0, ">", nil, val, nil }
+  cache.PushPullRequestCh <- &PushPullRequest{ key, ">", nil, val, nil }
 }
 
 // creates pull request for the remoteCache instance
 func (cache Cache) GetValByKey(key string) []byte {
 	// initiating pull request
-	request := &PushPullRequest{ key, 0, ">", make(chan []byte), nil, nil}
+	request := &PushPullRequest{ key, ">", make(chan []byte), nil, nil}
   cache.PushPullRequestCh <- request
 
 	reply := false
-	payload := []byte{}
+	payload := []bytef
 
 	// waiting for request to be processed and retrieval of payload
 	for !reply {

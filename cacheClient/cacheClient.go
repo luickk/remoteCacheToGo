@@ -8,6 +8,10 @@ import (
 	"crypto/x509"
   "errors"
 
+	"os"
+	"runtime/pprof"
+  "os/signal"
+
   "remoteCacheToGo/pkg/util"
 )
 
@@ -33,7 +37,6 @@ type PushPullRequest struct {
 type RemoteCache struct {
 	conn net.Conn
 	PushPullRequestCh chan PushPullRequest
-	CacheHandlerStarted bool
 }
 
 // tcpConnBuffer defines the buffer size of the TCP conn reader
@@ -100,27 +103,13 @@ func connHandler(conn net.Conn, cacheRequestReply chan PushPullRequest) error {
 			request.Operation = ">"
 			request.Data = decodedPPR.Data
 			cacheRequestReply <- *request
-		case ">i":
-			request.Operation = ">i"
-			request.QueueIndex, _ = strconv.Atoi(decodedPPR.Key)
-			request.Data = decodedPPR.Data
-			cacheRequestReply <- *request
-		case ">ik":
-			request.Operation = ">ik"
-			request.QueueIndex, _ = strconv.Atoi(decodedPPR.Key)
-			request.Data = decodedPPR.Data
-			cacheRequestReply <- *request
-		case ">c":
-			request.Operation = ">c"
-			request.QueueIndex, _ = strconv.Atoi(decodedPPR.Key)
-			request.Data = decodedPPR.Data
-			cacheRequestReply <- *request
 		case ">s":
 			request.Operation = ">s"
 			request.Key = decodedPPR.Key
 			request.Data = decodedPPR.Data
 			cacheRequestReply <- *request
 		}
+		netDataBuffer = []byte{}
 	}
 }
 
@@ -128,7 +117,6 @@ func connHandler(conn net.Conn, cacheRequestReply chan PushPullRequest) error {
 // reads/ writes form/ to connected cache
 func (cache RemoteCache) pushPullRequestHandler() error {
 	// setting indicator for cache handler state to true
-  cache.CacheHandlerStarted = true
 	cacheRequestReply := make(chan PushPullRequest)
 	// push pull buffer, buffers all made pull requests to remoteCache instance to find & route replies to call
 	var ppCacheOpBuffer []PushPullRequest
@@ -172,42 +160,6 @@ func (cache RemoteCache) pushPullRequestHandler() error {
 						}
 						util.WriteFrame(writer, encodedPPR)
 					}
-				case ">i":
-					// adding request to cache-operation-buffer to assign it later to incoming request-reply
-					ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
-					// sending request to remoteCache instance
-					encodingPPR.Key = strconv.Itoa(ppCacheOp.QueueIndex)
-					encodingPPR.Operation = ">i"
-					encodingPPR.Data = []byte{}
-					encodedPPR, err = util.EncodeMsg(encodingPPR)
-					if err != nil {
-						return err
-					}
-					util.WriteFrame(writer, encodedPPR)
-				case ">ik":
-					// adding request to cache-operation-buffer to assign it later to incoming request-reply
-					ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
-					// sending request to remoteCache instance
-					encodingPPR.Key = strconv.Itoa(ppCacheOp.QueueIndex)
-					encodingPPR.Operation = ">ik"
-					encodingPPR.Data = []byte{}
-					encodedPPR, err = util.EncodeMsg(encodingPPR)
-					if err != nil {
-						return err
-					}
-					util.WriteFrame(writer, encodedPPR)
-				case ">c":
-					// adding request to cache-operation-buffer to assign it later to incoming request-reply
-					ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
-					// sending request to remoteCache instance
-					encodingPPR.Key = strconv.Itoa(ppCacheOp.QueueIndex)
-					encodingPPR.Operation = ">c"
-					encodingPPR.Data = []byte{}
-					encodedPPR, err = util.EncodeMsg(encodingPPR)
-					if err != nil {
-						return err
-					}
-					util.WriteFrame(writer, encodedPPR)
 				case ">s":
 					// adding request to cache-operation-buffer to assign it later to incoming request-reply
 					ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
@@ -232,36 +184,6 @@ func (cache RemoteCache) pushPullRequestHandler() error {
 						// if request is not answered immeadiatly, request is forgotten
 						req.Processed = true
 					}
-				case ">i>i":
-					if !req.Processed {
-						// fullfills pull-requests data return
-						req.ReturnPayload <- cacheReply.Data
-						req.Processed = true
-
-					} else if !req.Processed {
-						// if request is not answered immeadiatly, request is forgotten
-						req.Processed = true
-					}
-				case ">ik>ik":
-					// compares made requests from client with replies from remote cache
-					if !req.Processed {
-						// fullfills pull-requests data return
-						req.ReturnPayload <- cacheReply.Data
-						req.Processed = true
-					} else if !req.Processed {
-						// if request is not answered immeadiatly, request is forgotten
-						req.Processed = true
-					}
-				case ">c>c":
-					// compares made requests from client with replies from remote cache
-					if !req.Processed {
-						// fullfills pull-requests data return
-						req.ReturnPayload <- cacheReply.Data
-						req.Processed = true
-					} else if !req.Processed {
-						// if request is not answered immeadiatly, request is forgotten
-						req.Processed = true
-					}
 				case ">s>s":
 					req.SubscriptionReturn <- &subscribeCacheVal{ cacheReply.Key, cacheReply.Data }
 				}
@@ -277,9 +199,18 @@ func (cache RemoteCache) pushPullRequestHandler() error {
 // initiates new RemoteCache struct and connects to remoteCache instance
 // params concerning tls (tls, pwHash, rootCert) can be initiated empty if tls bool is false
 func New() RemoteCache {
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	go func(){
+	    <- c
+			pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
+			os.Exit(1)
+	}()
+
 	// initing remote cache struct
 	var conn net.Conn
-	return RemoteCache{conn, make(chan PushPullRequest), false}
+	return RemoteCache{ conn, make(chan PushPullRequest) }
 }
 
 func (cache RemoteCache)ConnectToCache(address string, port int, pwHash string, rootCert string) error {

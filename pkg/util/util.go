@@ -55,7 +55,10 @@ func WriteFrame(writer *bufio.Writer, data []byte) error {
 	if err != nil {
 		return err
 	}
-	writer.Flush()
+	err = writer.Flush()
+  if err != nil {
+    return err
+  }
 	return nil
 }
 

@@ -3,7 +3,7 @@ package main
 import (
   "fmt"
   "strconv"
-  "time"
+  // "time"
   "remoteCacheToGo/cacheClient"
 )
 
@@ -37,8 +37,8 @@ func main() {
 
   // starting testing functions
 
-  // subscriptionTest(client)
-  concurrentGetTest(client)
+  subscriptionTest(client)
+  // concurrentGetTest(client)
 }
 
 func subscriptionTest(client cacheClient.RemoteCache) {
@@ -59,7 +59,7 @@ func concurrentWriteTest(client cacheClient.RemoteCache) {
       fmt.Println(err)
       break
     }
-    time.Sleep(1 * time.Millisecond)
+    // time.Sleep(1 * time.Millisecond)
   }
 }
 
@@ -73,6 +73,6 @@ func concurrentGetTest(client cacheClient.RemoteCache) {
       break
     }
     fmt.Println("remote"+strconv.Itoa(i) + ": " + string(res))
-    time.Sleep(2 * time.Millisecond)
+    // time.Sleep(2 * time.Millisecond)
     }
 }
