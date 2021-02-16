@@ -6,9 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"crypto/tls"
-
-	"fmt"
-
+	
   "remoteCacheToGo/pkg/util"
   "remoteCacheToGo/pkg/goDosProtection"
 )
@@ -76,7 +74,6 @@ func (cache Cache) CacheHandler() error {
 						if err != nil {
 							return err
 						}
-						fmt.Println(string(encodedPPR))
 						cache.clientWriteRequestCh <- &clientWriteRequest { writer, encodedPPR }
 					}
 
