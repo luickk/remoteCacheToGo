@@ -9,8 +9,9 @@ import (
 )
 
 func main() {
+  errorStream := make(chan error)
   // creating new cache database
-  remoteCache := cache.New()
+  remoteCache := cache.New(errorStream)
 
   remoteCache.AddValByKey("testKey", []byte("test1"))
 
@@ -21,11 +22,13 @@ func main() {
   fmt.Println("Requestd key: " + string(res))
 
   // creating unencrypted network interfce for cache with name "remote"
-  if err := remoteCache.RemoteConnHandler("127.0.0.1", 8000); err != nil {
-    fmt.Println(err)
-    return
-  }
+  go remoteCache.RemoteConnHandler("127.0.0.1", 8000, errorStream)
 
+  for {
+    if err := <- errorStream; err != nil {
+      fmt.Println(err)
+    }
+  }
 }
 
 func concurrentTestInstanceA(remoteCache cache.Cache) {

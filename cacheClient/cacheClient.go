@@ -8,10 +8,6 @@ import (
 	"crypto/x509"
   "errors"
 
-	"os"
-	"runtime/pprof"
-  "os/signal"
-
   "remoteCacheToGo/pkg/util"
 )
 
@@ -70,18 +66,18 @@ func connectToTlsRemoteHandler(address string, port int, pwHash string, rootCert
 	// dial encrypted tls connection
 	c, err = tls.Dial("tcp", address+":"+strconv.Itoa(port), config)
 	if err != nil {
-    return c, err
+		return c, err
 	}
 	// sending password hash in order to authenticate
 	c.Write([]byte(pwHash))
 
-  return c, err
+  return c, nil
 }
 
 
 // connection-handler waits for incoming data
 // incoming data is parsed and possible request answers are pushed to back to the pushPullRequestHandler
-func connHandler(conn net.Conn, cacheRequestReply chan PushPullRequest) error {
+func connHandler(conn net.Conn, cacheRequestReply chan PushPullRequest, errorStream chan error) {
 	var err error
 	decodedPPR := new(util.SPushPullReq)
 	netDataBuffer := make([]byte, tcpConnBuffer)
@@ -90,11 +86,13 @@ func connHandler(conn net.Conn, cacheRequestReply chan PushPullRequest) error {
 	for {
 		netDataBuffer, err = util.ReadFrame(conn)
 		if err != nil {
-			return err
+			errorStream <- err
+			return
 		}
 		// parsing instrucitons from client
 		if err := util.DecodeMsg(decodedPPR, netDataBuffer); err != nil {
-			return err
+			errorStream <- err
+			return
 		}
 		switch decodedPPR.Operation {
 		case ">":
@@ -115,7 +113,7 @@ func connHandler(conn net.Conn, cacheRequestReply chan PushPullRequest) error {
 
 // handles incoming requests on connected remoteCache
 // reads/ writes form/ to connected cache
-func (cache RemoteCache) pushPullRequestHandler() error {
+func (cache RemoteCache) pushPullRequestHandler(errorStream chan error) {
 	// setting indicator for cache handler state to true
 	cacheRequestReply := make(chan PushPullRequest)
 	// push pull buffer, buffers all made pull requests to remoteCache instance to find & route replies to call
@@ -126,9 +124,7 @@ func (cache RemoteCache) pushPullRequestHandler() error {
 	writer := bufio.NewWriter(cache.conn)
 
 	// starting connection Handler routine to parse incoming data and add to push request-replies to cacheListiner
-	go func(conn net.Conn, crp chan PushPullRequest) error {
-		return connHandler(conn, crp)
-	}(cache.conn, cacheRequestReply)
+	go connHandler(cache.conn, cacheRequestReply, errorStream)
 
 	for {
 		select {
@@ -145,7 +141,8 @@ func (cache RemoteCache) pushPullRequestHandler() error {
 						encodingPPR.Data = []byte{}
 						encodedPPR, err = util.EncodeMsg(encodingPPR)
 						if err != nil {
-							return err
+							errorStream <- err
+							return
 						}
 						// reply to pull-request from chacheClient by key
 						util.WriteFrame(writer, encodedPPR)
@@ -156,7 +153,8 @@ func (cache RemoteCache) pushPullRequestHandler() error {
 						encodingPPR.Data = ppCacheOp.Data
 						encodedPPR, err = util.EncodeMsg(encodingPPR)
 						if err != nil {
-							return err
+							errorStream <- err
+							return
 						}
 						util.WriteFrame(writer, encodedPPR)
 					}
@@ -167,7 +165,8 @@ func (cache RemoteCache) pushPullRequestHandler() error {
 					encodingPPR.Operation = ">s"
 					encodedPPR, err = util.EncodeMsg(encodingPPR)
 					if err != nil {
-						return err
+						errorStream <- err
+						return
 					}
 					util.WriteFrame(writer, encodedPPR)
 				}
@@ -199,21 +198,12 @@ func (cache RemoteCache) pushPullRequestHandler() error {
 // initiates new RemoteCache struct and connects to remoteCache instance
 // params concerning tls (tls, pwHash, rootCert) can be initiated empty if tls bool is false
 func New() RemoteCache {
-
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-	go func(){
-	    <- c
-			pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
-			os.Exit(1)
-	}()
-
 	// initing remote cache struct
 	var conn net.Conn
 	return RemoteCache{ conn, make(chan PushPullRequest) }
 }
 
-func (cache RemoteCache)ConnectToCache(address string, port int, pwHash string, rootCert string) error {
+func (cache RemoteCache)ConnectToCache(address string, port int, pwHash string, rootCert string, errorStream chan error) error {
 	var (
 		err error
 		conn net.Conn
@@ -233,9 +223,7 @@ func (cache RemoteCache)ConnectToCache(address string, port int, pwHash string, 
 	cache.conn = conn
 
 	// starts pushPullRequestHandler for concurrent request handling
-	go func() error {
-	 return cache.pushPullRequestHandler()
-	}()
+	go cache.pushPullRequestHandler(errorStream)
 
 	return nil
 }

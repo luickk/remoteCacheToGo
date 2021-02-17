@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"crypto/tls"
-	
+
   "remoteCacheToGo/pkg/util"
   "remoteCacheToGo/pkg/goDosProtection"
 )
@@ -44,7 +44,7 @@ var tcpConnBuffer = 2048
 
 // handles all requests to actual memory operations an the cache map
 // aka. pushPullRequestHandler
-func (cache Cache) CacheHandler() error {
+func (cache Cache) CacheHandler(errorStream chan error) {
 	var (
 		err error
 		encodedPPR []byte
@@ -72,7 +72,8 @@ func (cache Cache) CacheHandler() error {
 						encodingPPR.Data = ppCacheOp.Data
 						encodedPPR, err = util.EncodeMsg(encodingPPR)
 						if err != nil {
-							return err
+							errorStream <- err
+							return
 						}
 						cache.clientWriteRequestCh <- &clientWriteRequest { writer, encodedPPR }
 					}
@@ -97,7 +98,7 @@ func (cache Cache) CacheHandler() error {
 // client handler, handles connected client sessions
 // parses all incoming data
 // hanles all operations on connection object
-func (cache Cache)clientHandler(c net.Conn) error {
+func (cache Cache)clientHandler(c net.Conn, errorStream chan error) {
 	var (
 		encodedPPR []byte
 		err error
@@ -111,11 +112,12 @@ func (cache Cache)clientHandler(c net.Conn) error {
 		if err != nil {
 			// write subscribed-client-list(subscribedClients) remove instruction
 			cache.PushPullRequestCh <- &PushPullRequest{ "", ">s-c", nil, nil, writer }
-			return err
+			errorStream <- err
+			return
 		}
 		// parsing instrucitons from client
 		if err := util.DecodeMsg(decodedPPR, netDataBuffer); err != nil {
-			return err
+			return
 		}
 		switch decodedPPR.Operation {
 		case ">":
@@ -123,11 +125,13 @@ func (cache Cache)clientHandler(c net.Conn) error {
 			encodingPPR.Operation = ">"
 			encodingPPR.Data = cache.GetValByKey(decodedPPR.Key)
 			if err != nil {
-				return err
+				errorStream <- err
+				return
 			}
 			encodedPPR, err = util.EncodeMsg(encodingPPR)
 			if err != nil {
-				return err
+				errorStream <- err
+				return
 			}
 			cache.clientWriteRequestCh <- &clientWriteRequest { writer, encodedPPR }
 		case ">s":
@@ -142,11 +146,12 @@ func (cache Cache)clientHandler(c net.Conn) error {
 }
 
 // provides network interface for given cache
-func (cache Cache) RemoteConnHandler(bindAddress string, port int) error {
+func (cache Cache) RemoteConnHandler(bindAddress string, port int, errorStream chan error) {
 	// opening tcp server
 	l, err := net.Listen("tcp4", bindAddress+":"+strconv.Itoa(port))
 	if err != nil {
-		return err
+		errorStream <- err
+		return
 	}
 	defer l.Close()
 
@@ -154,21 +159,21 @@ func (cache Cache) RemoteConnHandler(bindAddress string, port int) error {
 		// waiting for client to connect
 		c, err := l.Accept()
 		if err != nil {
-			return err
+			errorStream <- err
+			return
 		}
-		go func(conn net.Conn) error {
-			return cache.clientHandler(conn)
-		}(c)
+		cache.clientHandler(c, errorStream)
 	}
-	return nil
+	return
 }
 
 // clientWriteRequestHandler handles all write request to clients
-func (cache Cache)clientWriteRequestHandler() error {
+func (cache Cache)clientWriteRequestHandler(errorStream chan error) {
 	for {
 		writeRequest := <-cache.clientWriteRequestCh
 		if err := util.WriteFrame(writeRequest.receivingClient, writeRequest.data); err != nil {
-			return err
+			errorStream <- err
+			return
 		}
 	}
 }
@@ -177,11 +182,12 @@ func (cache Cache)clientWriteRequestHandler() error {
 // provides TLS encryption and password authentication
 // provides valid and signed public/ private key pair and password hash to validate against
 // parameters: port, password Hash (please don't use unhashed pw strings), dosProtection enables delay between reconnects by ip, server Certificate, private Key
-func (cache Cache) RemoteTlsConnHandler(port int, bindAddress string, pwHash string, dosProtection bool, serverCert string, serverKey string) error {
+func (cache Cache) RemoteTlsConnHandler(port int, bindAddress string, pwHash string, dosProtection bool, serverCert string, serverKey string, errorStream chan error) {
 	// initiating provided key pair
 	cer, err := tls.X509KeyPair([]byte(serverCert), []byte(serverKey))
 	if err != nil {
-		return err
+		errorStream <- err
+		return
 	}
 
 	// initiating DOS protection with 10 second reconnection delay
@@ -193,38 +199,36 @@ func (cache Cache) RemoteTlsConnHandler(port int, bindAddress string, pwHash str
 	// listening for clients who want to connect
 	l, err := tls.Listen("tcp", bindAddress+":"+strconv.Itoa(port), config)
 	if err != nil {
-		return err
+		errorStream <- err
+		return
 	}
 	defer l.Close()
 
 	for {
 		c, err := l.Accept()
 		if err != nil {
-			return err
+			errorStream <- err
+			return
 		}
 
 		// client is not banned
 		if !dosProt.Client(strings.Split(c.RemoteAddr().String(), ":")[0]) || !dosProtection {
-			go func(conn net.Conn) error {
-				return cache.clientHandler(conn)
-			}(c)
+		go cache.clientHandler(c, errorStream)
 		// client is banned
 		}
 	}
 }
 
 // initiating new cache struct
-func New() Cache {
+func New(errorStream chan error) Cache {
 	// initiating cache struct
   cache := Cache{ make(map[string][]byte), make(chan *PushPullRequest), make(map[*bufio.Writer]int), make(chan *clientWriteRequest)}
 
 	// starting cache handler to allow for concurrent memory(cache map) operations
-	go func() error {
-		return cache.CacheHandler()
-	}()
-	go func() error {
-		return cache.clientWriteRequestHandler()
-	}()
+	go cache.CacheHandler(errorStream)
+
+	go cache.clientWriteRequestHandler(errorStream)
+
   return cache
 }
 

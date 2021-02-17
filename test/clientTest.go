@@ -2,6 +2,7 @@ package main
 
 import (
   "fmt"
+  "time"
   "strconv"
   // "time"
   "remoteCacheToGo/cacheClient"
@@ -9,14 +10,11 @@ import (
 
 func main() {
   fmt.Println("Client test")
-
+  errorStream := make(chan error)
   // creates new cacheClient struct and connects to remoteCache instance
   // no tls encryption -> param3: false
   client := cacheClient.New()
-  if err := client.ConnectToCache("127.0.0.1", 8000, "", ""); err != nil {
-    fmt.Println(err)
-    return
-  }
+  go client.ConnectToCache("127.0.0.1", 8000, "", "", errorStream)
 
   // writing to connected cache to key "remote" with val "test1"
   if err := client.AddValByKey("remote", []byte("test1")); err != nil {
@@ -33,12 +31,16 @@ func main() {
   }
   fmt.Println("Read val from key remote: "+string(res))
 
-  go concurrentWriteTest(client)
+  go concurrentWriteTest(client, errorStream)
 
   // starting testing functions
+  // go subscriptionTest(client)
+  go concurrentGetTest(client)
 
-  subscriptionTest(client)
-  // concurrentGetTest(client)
+  if err := <- errorStream; err != nil {
+    fmt.Println(err)
+    return
+  }
 }
 
 func subscriptionTest(client cacheClient.RemoteCache) {
@@ -51,15 +53,15 @@ func subscriptionTest(client cacheClient.RemoteCache) {
   }
 }
 
-func concurrentWriteTest(client cacheClient.RemoteCache) {
+func concurrentWriteTest(client cacheClient.RemoteCache, errorStream chan error) {
   i := 0
   for {
     i++
     if err := client.AddValByKey("remote"+strconv.Itoa(i), []byte("remote"+strconv.Itoa(i))); err != nil {
-      fmt.Println(err)
-      break
+      errorStream <- err
+      return
     }
-    // time.Sleep(1 * time.Millisecond)
+    time.Sleep(1 * time.Millisecond)
   }
 }
 
@@ -73,6 +75,6 @@ func concurrentGetTest(client cacheClient.RemoteCache) {
       break
     }
     fmt.Println("remote"+strconv.Itoa(i) + ": " + string(res))
-    // time.Sleep(2 * time.Millisecond)
+    time.Sleep(2 * time.Millisecond)
     }
 }
