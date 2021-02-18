@@ -46,9 +46,9 @@ fmt.Println("Requestd key: " + string(res))
 // creating unencrypted network interfce for cache with name "remote"
 remoteCache.RemoteConnHandler("127.0.0.1", 8000)
 
-// creating encrypted network interface for cache with name "remote" and the password hash "test" and enabled dosProtection
+// creating encrypted network interface for cache with name "remote" and the password hash
 // serverCert & Key are passed hardcoded only for testing purposes
-remoteCache.RemoteTlsConnHandler("127.0.0.1", 8001, "test", true, serverCert, serverKey)
+remoteCache.RemoteTlsConnHandler("127.0.0.1", 8001, "test", serverCert, serverKey)
 
 ```
 

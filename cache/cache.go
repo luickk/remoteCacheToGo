@@ -8,7 +8,6 @@ import (
 	"crypto/tls"
 
   "remoteCacheToGo/pkg/util"
-  "remoteCacheToGo/pkg/goDosProtection"
 )
 
 // struct to handle any requests for the CacheHandler which operates on cache memory
@@ -181,17 +180,14 @@ func (cache Cache)clientWriteRequestHandler(errorStream chan error) {
 // provides network interface for given cache
 // provides TLS encryption and password authentication
 // provides valid and signed public/ private key pair and password hash to validate against
-// parameters: port, password Hash (please don't use unhashed pw strings), dosProtection enables delay between reconnects by ip, server Certificate, private Key
-func (cache Cache) RemoteTlsConnHandler(port int, bindAddress string, pwHash string, dosProtection bool, serverCert string, serverKey string, errorStream chan error) {
+// parameters: port, password Hash (please don't use unhashed pw strings) enables delay between reconnects by ip, server Certificate, private Key
+func (cache Cache) RemoteTlsConnHandler(port int, bindAddress string, pwHash string, serverCert string, serverKey string, errorStream chan error) {
 	// initiating provided key pair
 	cer, err := tls.X509KeyPair([]byte(serverCert), []byte(serverKey))
 	if err != nil {
 		errorStream <- err
 		return
 	}
-
-	// initiating DOS protection with 10 second reconnection delay
-  dosProt := goDosProtection.New(10)
 
 	// initiating config form key pair
 	config := &tls.Config{Certificates: []tls.Certificate{cer}}
@@ -211,11 +207,7 @@ func (cache Cache) RemoteTlsConnHandler(port int, bindAddress string, pwHash str
 			return
 		}
 
-		// client is not banned
-		if !dosProt.Client(strings.Split(c.RemoteAddr().String(), ":")[0]) || !dosProtection {
 		go cache.clientHandler(c, errorStream)
-		// client is banned
-		}
 	}
 }
 
