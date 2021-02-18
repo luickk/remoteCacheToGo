@@ -4,7 +4,6 @@ import (
 	"net"
 	"bufio"
 	"strconv"
-	"strings"
 	"crypto/tls"
 
   "remoteCacheToGo/pkg/util"
