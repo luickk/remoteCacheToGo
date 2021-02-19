@@ -2,7 +2,7 @@ package main
 
 import (
   "fmt"
-  // "time"
+  "time"
   "strconv"
   "remoteCacheToGo/cacheClient"
 )
@@ -91,7 +91,7 @@ func concurrentWriteTest(client cacheClient.RemoteCache, errorStream chan error)
       errorStream <- err
       return
     }
-    // time.Sleep(1 * time.Millisecond)
+    time.Sleep(1 * time.Millisecond)
   }
 }
 
@@ -105,6 +105,6 @@ func concurrentGetTest(client cacheClient.RemoteCache) {
       break
     }
     fmt.Println("remote"+strconv.Itoa(i) + ": " + string(res))
-    // time.Sleep(2 * time.Millisecond)
+    time.Sleep(2 * time.Millisecond)
     }
 }

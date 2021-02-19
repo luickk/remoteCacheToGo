@@ -4,6 +4,7 @@ import (
 	"net"
 	"bufio"
 	"strconv"
+	"errors"
 	"crypto/tls"
 
   "remoteCacheToGo/pkg/util"
@@ -180,7 +181,7 @@ func (cache Cache)clientWriteRequestHandler(errorStream chan error) {
 // provides TLS encryption and password authentication
 // provides valid and signed public/ private key pair and password hash to validate against
 // parameters: port, password Hash (please don't use unhashed pw strings) enables delay between reconnects by ip, server Certificate, private Key
-func (cache Cache) RemoteTlsConnHandler(port int, bindAddress string, pwHash string, serverCert string, serverKey string, errorStream chan error) {
+func (cache Cache) RemoteTlsConnHandler(port int, bindAddress string, token string, serverCert string, serverKey string, errorStream chan error) {
 	// initiating provided key pair
 	cer, err := tls.X509KeyPair([]byte(serverCert), []byte(serverKey))
 	if err != nil {
@@ -201,12 +202,23 @@ func (cache Cache) RemoteTlsConnHandler(port int, bindAddress string, pwHash str
 
 	for {
 		c, err := l.Accept()
+		tokenBuffer := make([]byte, 1024)
 		if err != nil {
 			errorStream <- err
 			return
 		}
-
-		go cache.clientHandler(c, errorStream)
+    n, err := c.Read(tokenBuffer)
+    if err != nil {
+			errorStream <- err
+			return
+    }
+		if string(tokenBuffer[:n]) == token {
+			go cache.clientHandler(c, errorStream)
+		} else {
+			errorStream <- errors.New("token invalid")
+			c.Close()
+			return
+		}
 	}
 }
 

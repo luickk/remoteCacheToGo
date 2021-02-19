@@ -51,7 +51,7 @@ func connectToRemoteHandler(address string, port int) (net.Conn, error) {
 
 // connectes to remoteCache and returns connection via. TLS protocol
 // tls requires signed cert and password for authentication
-func connectToTlsRemoteHandler(address string, port int, pwHash string, rootCert string) (net.Conn, error) {
+func connectToTlsRemoteHandler(address string, port int, token string, rootCert string) (net.Conn, error) {
 	var err error
 	var c net.Conn
 	// creating and appending new cert pool with x509 standard
@@ -69,7 +69,7 @@ func connectToTlsRemoteHandler(address string, port int, pwHash string, rootCert
 		return c, err
 	}
 	// sending password hash in order to authenticate
-	c.Write([]byte(pwHash))
+	c.Write([]byte(token))
 
   return c, nil
 }
@@ -196,36 +196,36 @@ func (cache RemoteCache) pushPullRequestHandler(errorStream chan error) {
 }
 
 // initiates new RemoteCache struct and connects to remoteCache instance
-// params concerning tls (tls, pwHash, rootCert) can be initiated empty if tls bool is false
+// params concerning tls (tls, token, rootCert) can be initiated empty if tls bool is false
 func New() RemoteCache {
 	// initing remote cache struct
 	var conn net.Conn
 	return RemoteCache{ conn, make(chan PushPullRequest) }
 }
 
-func (cache RemoteCache)ConnectToCache(address string, port int, pwHash string, rootCert string, errorStream chan error) error {
+func (cache RemoteCache)ConnectToCache(address string, port int, token string, rootCert string, errorStream chan error) {
 	var (
 		err error
 		conn net.Conn
 	)
 	// checking ig tls is enabled or not
-	if pwHash != "" && rootCert != "" {
-		conn, err = connectToTlsRemoteHandler(address, port, pwHash, rootCert)
+	if token != "" && rootCert != "" {
+		conn, err = connectToTlsRemoteHandler(address, port, token, rootCert)
 	  if err != nil {
-			return err
+			errorStream <- err
+			return
 	  }
 	} else {
 		conn, err = connectToRemoteHandler(address, port)
 	  if err != nil {
-			return err
+			errorStream <- err
+			return
 	  }
 	}
 	cache.conn = conn
 
 	// starts pushPullRequestHandler for concurrent request handling
 	go cache.pushPullRequestHandler(errorStream)
-
-	return nil
 }
 
 // adds key value to remote cache
