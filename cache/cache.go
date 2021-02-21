@@ -78,7 +78,6 @@ func (cache Cache) CacheHandler(errorStream chan error) {
 					}
 
 					cache.cacheMem[ppCacheOp.Key] = ppCacheOp.Data
-
 				}
 			case ">s":
 				// reply to pull-request from chacheClient by index
@@ -86,8 +85,6 @@ func (cache Cache) CacheHandler(errorStream chan error) {
 			case ">s-c":
 				// reply to pull-request from chacheClient by index
 				delete(cache.subscribedClients, ppCacheOp.ClientWriter)
-			default:
-					 break
 			}
 		}
 	}
@@ -138,8 +135,6 @@ func (cache Cache)clientHandler(c net.Conn, errorStream chan error) {
 		case "<":
 			// writing push-request from client to cache
 			cache.AddValByKey(decodedPPR.Key, decodedPPR.Data)
-		default:
-				 break
 		}
 	}
 }

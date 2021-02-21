@@ -107,7 +107,6 @@ func connHandler(conn net.Conn, cacheRequestReply chan PushPullRequest, errorStr
 			request.Data = decodedPPR.Data
 			cacheRequestReply <- *request
 		}
-		netDataBuffer = []byte{}
 	}
 }
 
@@ -126,31 +125,44 @@ func (cache RemoteCache) pushPullRequestHandler(errorStream chan error) {
 	// starting connection Handler routine to parse incoming data and add to push request-replies to cacheListiner
 	go connHandler(cache.conn, cacheRequestReply, errorStream)
 
-	for {
-		select {
-		// waits for push pull requests for remoteCache
-		case ppCacheOp := <-cache.PushPullRequestCh:
-			switch ppCacheOp.Operation {
-			case ">":
-				if len(ppCacheOp.Data) <= 0 { // pull operation
+	go func() {
+		for {
+			select {
+			// waits for push pull requests for remoteCache
+			case ppCacheOp := <-cache.PushPullRequestCh:
+				switch ppCacheOp.Operation {
+				case ">":
+					if len(ppCacheOp.Data) <= 0 { // pull operation
+							// adding request to cache-operation-buffer to assign it later to incoming request-reply
+							ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
+							// sends pull request string to remoteCache instance
+							encodingPPR.Key = ppCacheOp.Key
+							encodingPPR.Operation = ">"
+							encodingPPR.Data = []byte{}
+							encodedPPR, err = util.EncodeMsg(encodingPPR)
+							if err != nil {
+								errorStream <- err
+								return
+							}
+							// reply to pull-request from chacheClient by key
+							util.WriteFrame(writer, encodedPPR)
+						} else if len(ppCacheOp.Data) > 0 { // push operation
+							// sends push request string to remoteCache instance
+							encodingPPR.Key = ppCacheOp.Key
+							encodingPPR.Operation = "<"
+							encodingPPR.Data = ppCacheOp.Data
+							encodedPPR, err = util.EncodeMsg(encodingPPR)
+							if err != nil {
+								errorStream <- err
+								return
+							}
+							util.WriteFrame(writer, encodedPPR)
+						}
+					case ">s":
 						// adding request to cache-operation-buffer to assign it later to incoming request-reply
 						ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
-						// sends pull request string to remoteCache instance
-						encodingPPR.Key = ppCacheOp.Key
-						encodingPPR.Operation = ">"
-						encodingPPR.Data = []byte{}
-						encodedPPR, err = util.EncodeMsg(encodingPPR)
-						if err != nil {
-							errorStream <- err
-							return
-						}
-						// reply to pull-request from chacheClient by key
-						util.WriteFrame(writer, encodedPPR)
-					} else if len(ppCacheOp.Data) > 0 { // push operation
-						// sends push request string to remoteCache instance
-						encodingPPR.Key = ppCacheOp.Key
-						encodingPPR.Operation = "<"
-						encodingPPR.Data = ppCacheOp.Data
+						// sending request to remoteCache instance
+						encodingPPR.Operation = ">s"
 						encodedPPR, err = util.EncodeMsg(encodingPPR)
 						if err != nil {
 							errorStream <- err
@@ -158,38 +170,29 @@ func (cache RemoteCache) pushPullRequestHandler(errorStream chan error) {
 						}
 						util.WriteFrame(writer, encodedPPR)
 					}
-				case ">s":
-					// adding request to cache-operation-buffer to assign it later to incoming request-reply
-					ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
-					// sending request to remoteCache instance
-					encodingPPR.Operation = ">s"
-					encodedPPR, err = util.EncodeMsg(encodingPPR)
-					if err != nil {
-						errorStream <- err
-						return
-					}
-					util.WriteFrame(writer, encodedPPR)
-				}
+			}
+		}
+	}()
+	for {
 		// waits for possible request replies to pull-requests from remoteCache instance via. channel from connection-handler
-		case cacheReply := <-cacheRequestReply:
-			for i, req := range ppCacheOpBuffer {
-				switch (cacheReply.Operation + req.Operation) {
-				case ">>":
-					if !req.Processed {
-						// fullfills pull-requests data return
-						req.ReturnPayload <- cacheReply.Data
-						req.Processed = true
-					} else if !req.Processed {
-						// if request is not answered immeadiatly, request is forgotten
-						req.Processed = true
-					}
-				case ">s>s":
-					req.SubscriptionReturn <- &subscribeCacheVal{ cacheReply.Key, cacheReply.Data }
+		cacheReply := <-cacheRequestReply
+		for i, req := range ppCacheOpBuffer {
+			switch (cacheReply.Operation + req.Operation) {
+			case ">>":
+				if !req.Processed {
+					// fullfills pull-requests data return
+					req.ReturnPayload <- cacheReply.Data
+					req.Processed = true
+				} else if !req.Processed {
+					// if request is not answered immeadiatly, request is forgotten
+					req.Processed = true
 				}
-				if req.Processed {
-					// removing all ppOp from ppCacheOpBuffer if processed
-					ppCacheOpBuffer = removeOperation(ppCacheOpBuffer, i)
-				}
+			case ">s>s":
+				req.SubscriptionReturn <- &subscribeCacheVal{ cacheReply.Key, cacheReply.Data }
+			}
+			if req.Processed {
+				// removing all ppOp from ppCacheOpBuffer if processed
+				ppCacheOpBuffer = removeOperation(ppCacheOpBuffer, i)
 			}
 		}
 	}
