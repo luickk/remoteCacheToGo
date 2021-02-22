@@ -20,8 +20,8 @@ func main() {
   go concurrentWriteTest(client, errorStream)
 
   // starting testing functions
-  go subscriptionTest(client)
-  // go concurrentGetTest(client)
+  // go subscriptionTest(client)
+  go concurrentGetTest(client)
 
   if err := <- errorStream; err != nil {
     fmt.Println(err)
@@ -61,6 +61,6 @@ func concurrentGetTest(client cacheClient.RemoteCache) {
       break
     }
     fmt.Println("remote"+strconv.Itoa(i) + ": " + string(res))
-    // time.Sleep(2 * time.Millisecond)
+    // time.Sleep(1 * time.Millisecond)
     }
 }

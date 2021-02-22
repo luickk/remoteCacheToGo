@@ -2,6 +2,7 @@ package cacheClient
 
 import (
 	"net"
+  "sync"
 	"strconv"
 	"bufio"
 	"crypto/tls"
@@ -125,6 +126,8 @@ func (cache RemoteCache) pushPullRequestHandler(errorStream chan error) {
 	// starting connection Handler routine to parse incoming data and add to push request-replies to cacheListiner
 	go connHandler(cache.conn, cacheRequestReply, errorStream)
 
+	ppBufferMutex := &sync.RWMutex{}
+
 	go func() {
 		for {
 			select {
@@ -134,7 +137,9 @@ func (cache RemoteCache) pushPullRequestHandler(errorStream chan error) {
 				case ">":
 					if len(ppCacheOp.Data) <= 0 { // pull operation
 							// adding request to cache-operation-buffer to assign it later to incoming request-reply
+							ppBufferMutex.Lock()
 							ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
+							ppBufferMutex.Unlock()
 							// sends pull request string to remoteCache instance
 							encodingPPR.Key = ppCacheOp.Key
 							encodingPPR.Operation = ">"
@@ -160,7 +165,9 @@ func (cache RemoteCache) pushPullRequestHandler(errorStream chan error) {
 						}
 					case ">s":
 						// adding request to cache-operation-buffer to assign it later to incoming request-reply
+						ppBufferMutex.Lock()
 						ppCacheOpBuffer = append(ppCacheOpBuffer, ppCacheOp)
+						ppBufferMutex.Unlock()
 						// sending request to remoteCache instance
 						encodingPPR.Operation = ">s"
 						encodedPPR, err = util.EncodeMsg(encodingPPR)
@@ -192,7 +199,9 @@ func (cache RemoteCache) pushPullRequestHandler(errorStream chan error) {
 			}
 			if req.Processed {
 				// removing all ppOp from ppCacheOpBuffer if processed
+				ppBufferMutex.Lock()
 				ppCacheOpBuffer = removeOperation(ppCacheOpBuffer, i)
+				ppBufferMutex.Unlock()
 			}
 		}
 	}
