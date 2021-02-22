@@ -165,10 +165,8 @@ func (cache Cache) RemoteConnHandler(bindAddress string, port int, errorStream c
 func (cache Cache)clientWriteRequestHandler(errorStream chan error) {
 	for {
 		writeRequest := <-cache.clientWriteRequestCh
-		if err := util.WriteFrame(writeRequest.receivingClient, writeRequest.data); err != nil {
-			errorStream <- err
-			return
-		}
+		// err already handled at read
+		util.WriteFrame(writeRequest.receivingClient, writeRequest.data)
 	}
 }
 
